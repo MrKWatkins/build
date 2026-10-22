@@ -1,0 +1,28 @@
+name: .NET Pack
+description: Create NuGet and symbol packages from existing Release build outputs.
+inputs:
+  directory:
+    description: Directory containing the solution.
+    default: src
+  version:
+    description: Stable release version; must match the preceding build.
+    required: true
+  output:
+    description: Empty package output directory, relative to the workspace.
+    default: artifacts/packages
+outputs:
+  directory:
+    description: Absolute directory containing prepared packages.
+    value: ${{ steps.pack.outputs.directory }}
+runs:
+  using: composite
+  steps:
+    - name: Pack existing outputs
+      id: pack
+      shell: bash
+      env:
+        PACK_SCRIPT: ${{ github.action_path }}/pack.sh
+        BUILD_DIRECTORY: ${{ inputs.directory }}
+        VERSION: ${{ inputs.version }}
+        PACKAGE_DIRECTORY: ${{ inputs.output }}
+      run: bash "$PACK_SCRIPT"

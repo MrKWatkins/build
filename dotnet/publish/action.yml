@@ -1,0 +1,38 @@
+name: NuGet Publish
+description: Push already prepared packages to nuget.org, without checkout or rebuilding.
+inputs:
+  directory:
+    description: Directory containing the validated .nupkg and .snupkg artifacts.
+    default: artifacts/packages
+  nuget-user:
+    description: NuGet profile name for trusted publishing (requires id-token write permission).
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Validate publication inputs
+      shell: bash
+      env:
+        NUGET_USER: ${{ inputs.nuget-user }}
+        PACKAGE_DIRECTORY: ${{ inputs.directory }}
+      run: |
+        if [[ -z "$NUGET_USER" ]]; then
+          echo 'Provide nuget-user for trusted publishing.' >&2
+          exit 1
+        fi
+        compgen -G "$PACKAGE_DIRECTORY/*.nupkg" > /dev/null || {
+          echo 'No prepared .nupkg files found.' >&2
+          exit 1
+        }
+    - name: NuGet login
+      id: login
+      uses: NuGet/login@v1
+      with:
+        user: ${{ inputs.nuget-user }}
+    - name: Push prepared packages
+      shell: bash
+      env:
+        PUBLISH_SCRIPT: ${{ github.action_path }}/publish.sh
+        PACKAGE_DIRECTORY: ${{ inputs.directory }}
+        NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+      run: bash "$PUBLISH_SCRIPT"

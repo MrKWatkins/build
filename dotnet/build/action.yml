@@ -1,0 +1,37 @@
+name: .NET Build
+description: Restore, check formatting, build and test with Microsoft Testing Platform.
+inputs:
+  directory:
+    description: Directory containing the solution and its test configuration.
+    default: src
+  version:
+    description: Optional stable release version used when restoring and building.
+    default: ''
+  test-filter:
+    description: Optional NUnit/MSTest filter expression for Microsoft Testing Platform.
+    default: ''
+  coverage:
+    description: Collect Cobertura coverage and generate a job summary.
+    default: 'true'
+  coverage-assembly-filters:
+    description: Optional ReportGenerator assembly filters.
+    default: '+*'
+  dotnet-version:
+    description: .NET SDK version to install.
+    default: 10.0.x
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+    - name: Build and test
+      shell: bash
+      env:
+        BUILD_SCRIPT: ${{ github.action_path }}/build.sh
+        BUILD_DIRECTORY: ${{ inputs.directory }}
+        VERSION: ${{ inputs.version }}
+        TEST_FILTER: ${{ inputs.test-filter }}
+        COVERAGE: ${{ inputs.coverage }}
+        COVERAGE_ASSEMBLY_FILTERS: ${{ inputs.coverage-assembly-filters }}
+      run: bash "$BUILD_SCRIPT"
