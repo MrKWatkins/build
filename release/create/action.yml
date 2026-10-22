@@ -1,0 +1,20 @@
+name: Create Release
+description: Tag an explicit commit and create its GitHub release.
+inputs:
+  version:
+    description: Stable release version without a v prefix.
+    required: true
+  commit:
+    description: Full resolved SHA of the commit that was built and validated.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Create tag and release
+      shell: bash
+      env:
+        RELEASE_SCRIPT: ${{ github.action_path }}/create.sh
+        VERSION: ${{ inputs.version }}
+        COMMIT: ${{ inputs.commit }}
+        GH_TOKEN: ${{ github.token }}
+      run: bash "$RELEASE_SCRIPT"

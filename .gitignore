@@ -1,0 +1,7 @@
+artifacts/
+**/bin/
+**/obj/
+**/TestResults/
+.idea/
+.vscode/
+__pycache__/
