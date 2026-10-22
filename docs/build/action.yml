@@ -1,0 +1,37 @@
+name: Build documentation
+description: Generate API documentation, lint prose and validate a complete VitePress site.
+inputs:
+  config:
+    description: Repository-root-relative site configuration
+    default: docs/site.json
+  version:
+    description: Stable display version, or dev
+    default: dev
+  source-ref:
+    description: Full API source commit SHA (defaults to the checked-out commit)
+  output:
+    description: Empty repository-root-relative site output directory
+    default: artifacts/docs
+  image:
+    description: Shared documentation image tag or digest
+    default: ghcr.io/mrkwatkins/docs-dotnet:latest
+outputs:
+  directory:
+    description: Validated site directory
+    value: ${{ steps.build.outputs.directory }}
+runs:
+  using: composite
+  steps:
+    - id: build
+      shell: bash
+      env:
+        DOCS_SCRIPT: ${{ github.action_path }}/../scripts/docs.sh
+        DOCS_IMAGE: ${{ inputs.image }}
+        CONFIG: ${{ inputs.config }}
+        VERSION: ${{ inputs.version }}
+        SOURCE_REF: ${{ inputs.source-ref }}
+        OUTPUT: ${{ inputs.output }}
+      run: |
+        source_ref=${SOURCE_REF:-$(git rev-parse HEAD)}
+        bash "$DOCS_SCRIPT" build --config "$CONFIG" --version "$VERSION" --source-ref "$source_ref" --output "$OUTPUT"
+        echo "directory=$(realpath "$OUTPUT")" >> "$GITHUB_OUTPUT"

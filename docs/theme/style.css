@@ -1,0 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+:root { --vp-layout-max-width: 1600px; }
+.VPDoc.has-aside .content-container { max-width: 1000px; }
+.VPDoc:not(.has-aside) .content-container { max-width: 1200px; }
+.vp-doc table { display: block; overflow-x: auto; }

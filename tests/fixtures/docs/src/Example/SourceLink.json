@@ -1,0 +1,5 @@
+{
+  "documents": {
+    "/_/src/Example/*": "https://raw.githubusercontent.com/MrKWatkins/build/0123456789012345678901234567890123456789/src/Example/*"
+  }
+}

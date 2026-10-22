@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "title": "Guide",
+  "description": "Documentation without a language runtime.",
+  "repository": "https://github.com/MrKWatkins/build",
+  "base": "/guide/",
+  "guide": [{ "text": "Overview", "link": "/" }]
+}

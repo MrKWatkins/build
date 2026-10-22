@@ -63,7 +63,7 @@ The consumer owns the release sequence. Resolve the checked-out commit with `git
 5. Call `release/create` with `version` and the resolved `commit`.
 6. Deploy the exact validated documentation artifact.
 
-The docs actions are not implemented yet. Do not wire package publication into a consumer release until that validation gate is in place.
+Use `docs/build` for the documentation validation gate. Deployment and complete consumer release workflows will be added during the pilot.
 
 | Action           | Inputs                                                                                       | Behaviour                                                                                                                                                                            |
 |------------------|----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -105,17 +105,102 @@ scripts perform real publication when invoked.
 
 ## Maintaining this repository
 
-CI runs ShellCheck, actionlint, and `bash tests/test.sh`. The integration tests use the real SDK to prove package/symbol creation does not rebuild, then
+CI runs ShellCheck, actionlint, `bash tests/test.sh` and the documentation image tests. The package tests use the real SDK to prove package/symbol creation does not rebuild, then
 recording command doubles to check build failure propagation, publication-only behaviour and commit/tag validation. They never push packages or create releases.
 
 Locally, with .NET 10, ShellCheck and actionlint installed:
 
 ```bash
-shellcheck -x -P SCRIPTDIR dotnet/*/*.sh release/create/*.sh scripts/*.sh tests/*.sh
+shellcheck -x -P SCRIPTDIR dotnet/*/*.sh release/create/*.sh scripts/*.sh tests/*.sh docs/scripts/*.sh images/*.sh
 actionlint
 bash tests/test.sh
 ```
 
 Dependabot maintains action references. Update the pinned ReportGenerator version in `dotnet/build/build.sh` centrally and validate before merging.
+
+## Documentation
+
+`docs/build` generates APIs, runs Vale at error level, builds VitePress and validates local links, assets and HTML anchors. It returns the validated site's absolute
+`directory` output. Run it after compiling Release assemblies and before publishing packages:
+
+```yaml
+- uses: MrKWatkins/build/docs/build@main
+  with:
+    version: '1.2.3'
+```
+
+Inputs are `config` (default `docs/site.json`), `version` (default `dev`), `source-ref` (default the checked-out commit), `output` (default `artifacts/docs`) and
+`image` (default `ghcr.io/mrkwatkins/docs-dotnet:latest`). Output must be empty; upload it as an artifact before publication and retain it for deployment retries.
+This action needs only `contents: read`, Docker and prepared assemblies. It passes no publishing credentials to the container.
+
+Put handwritten pages in `docs/content` and configure the site in `docs/site.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "title": "Example",
+  "description": "A strongly typed library.",
+  "repository": "https://github.com/MrKWatkins/Example",
+  "base": "/Example/",
+  "guide": [{ "text": "Overview", "link": "/" }],
+  "api": {
+    "generator": "sesharp",
+    "assemblies": ["src/Example/bin/Release/net10.0/Example.dll"]
+  }
+}
+```
+
+Paths are repository-root-relative. `contentDirectory` defaults to `docs/content`. Guide links are site-root-relative and omit the deployment base. The API section
+uses `/api/`, showing namespace/type navigation and member lists on their type pages. Multiple assemblies can share namespaces. Keep each assembly's XML documentation,
+PDB and dependencies alongside it. The image supplies matching framework XML documentation for inherited summaries.
+
+Optional `api.introductions` is an array of `{ "text": "Introduction", "link": "/api/introduction" }` entries pointing to handwritten pages under
+`docs/content/api`. Generation uses temporary storage and refuses to overwrite handwritten pages. Static files live alongside Markdown; VitePress processes relative
+asset links. API generation is optional: use `ghcr.io/mrkwatkins/docs-base:latest` for a guide without .NET.
+
+Vale uses shared British spelling and technical-prose rules, including `strongly typed`. Add project terms through an optional `vocabularyDirectory` containing
+`accept.txt` and `reject.txt`. Identifiers belong in inline code. Shared style packages and dictionaries are bundled; builds need no `vale sync` or npm install.
+
+Local builds and previews need Docker, with no Node or .NET installation beyond preparing the assemblies:
+
+```bash
+bash /path/to/build/docs/scripts/docs.sh build --version 1.2.3 --source-ref "$(git rev-parse HEAD)"
+bash /path/to/build/docs/scripts/docs.sh serve --source-ref "$(git rev-parse HEAD)"
+```
+
+The wrapper pulls the selected image and resolves it once to a digest for execution. Set `DOCS_IMAGE` to a version tag or digest to diagnose an older toolchain.
+Outputs use your UID/GID. Preview listens at `http://localhost:5173/<base>/`; `DOCS_PORT` changes the host port. It uses a prepared copy: restart after source edits.
+The header displays the supplied release version, or an explicit development label when omitted.
+
+## Documentation images
+
+The Linux amd64 images contain Node 24, VitePress 1.6.4, Vue, Vale and shared styles. The .NET variant adds Sesharp 1.11.0, runtime 10.0.13 and framework XML,
+with no SDK or WASM workload. npm dependencies are locked; Vite is overridden to a compatible patched release. Third-party licences remain in the image.
+
+Build and test locally with Docker and the .NET 10 SDK:
+
+```bash
+docker build -f images/docs-base/Dockerfile -t docs-base:local .
+docker build -f images/docs-dotnet/Dockerfile -t docs-dotnet:local .
+bash tests/docs.sh
+```
+
+To view the example site, select **Preview documentation** in a JetBrains IDE's run configurations, or run `bash tests/preview-docs.sh`.
+It builds the local images and fixture assemblies, then serves `http://localhost:5173/example/`. Stop the run to remove the preview container.
+Set `DOCS_PORT` to use another port. Restart the run after editing the fixtures.
+
+Tests exercise both images, multiple API assemblies, generic/nested types, inherited framework prose, subpath links/assets, user-owned output and preview.
+Deliberate prose, dead-link and anchor failures must return nonzero without producing a deployable site.
+
+After reviewing and pushing, run **Publish documentation images** with `operation: build` and a new toolchain version. This tests both images, publishes immutable
+version tags and builds the .NET release against the exact published base digest. The workflow uses `GITHUB_TOKEN` with `packages: write` and logs digests and versions.
+Existing version tags are never replaced; use a new version after a partially published release.
+
+For the first release, change both GHCR packages to **Public** in their Package settings. GitHub initially makes new packages private, even for a public source
+repository. Then run the workflow at the same source commit with `operation: promote` and that version. Promotion verifies anonymous access and reruns tests before
+advancing `latest`. Repeat promotion at an older release's source commit to roll back. Neither operation deploys consumer documentation.
+
+Keep the image version independent of library versions. Update pinned tools here, test, publish a new toolchain version and promote it; consumers following `latest`
+need no configuration change. Deployment and docs-only reference selection will be proven in the first consumer pilot.
 
 Original project code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE).

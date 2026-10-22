@@ -1,0 +1,37 @@
+extends: substitution
+message: "Use British spelling '%s' instead of '%s'."
+level: error
+ignorecase: true
+swap:
+  color: colour
+  colors: colours
+  behavior: behaviour
+  behaviors: behaviours
+  organization: organisation
+  organizations: organisations
+  organize: organise
+  organized: organised
+  organizing: organising
+  recognize: recognise
+  recognized: recognised
+  customize: customise
+  customized: customised
+  serialize: serialise
+  serialized: serialised
+  deserialize: deserialise
+  deserialized: deserialised
+  optimize: optimise
+  optimized: optimised
+  normalize: normalise
+  normalized: normalised
+  synchronize: synchronise
+  synchronized: synchronised
+  analyze: analyse
+  analyzed: analysed
+  center: centre
+  centers: centres
+  canceled: cancelled
+  canceling: cancelling
+  labeled: labelled
+  labeling: labelling
+  gray: grey

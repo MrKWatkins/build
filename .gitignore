@@ -5,3 +5,4 @@ artifacts/
 .idea/
 .vscode/
 __pycache__/
+node_modules/

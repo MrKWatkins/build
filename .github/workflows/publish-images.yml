@@ -1,0 +1,40 @@
+name: Publish documentation images
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Immutable toolchain version without a v prefix
+        type: string
+        required: true
+      operation:
+        description: Build a new release, or promote a tested public release to latest (also supports rollback)
+        type: choice
+        options: [build, promote]
+        default: build
+permissions:
+  contents: read
+concurrency:
+  group: documentation-image-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build or promote images
+        env:
+          VERSION: ${{ inputs.version }}
+          OPERATION: ${{ inputs.operation }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash images/publish.sh "$OPERATION"

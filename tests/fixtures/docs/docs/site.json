@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "title": "Example",
+  "description": "A strongly typed documentation fixture.",
+  "repository": "https://github.com/MrKWatkins/build",
+  "base": "/example/",
+  "contentDirectory": "docs/content",
+  "vocabularyDirectory": "docs/vocabulary",
+  "guide": [
+    { "text": "Overview", "link": "/" },
+    { "text": "Usage", "link": "/usage" }
+  ],
+  "api": {
+    "generator": "sesharp",
+    "assemblies": [
+      "src/Example/bin/Release/net10.0/Example.dll",
+      "src/Support/bin/Release/net10.0/Support.dll"
+    ],
+    "introductions": [{ "text": "Introduction", "link": "/api/introduction" }]
+  }
+}
