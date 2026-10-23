@@ -495,7 +495,6 @@ def main():
         "pack": pack,
         "build-and-pack": build_and_pack,
         "publish": publish,
-        "validate-release": validate_release,
         "create-release": create_release,
         "release-version": release_version,
         "release-source": release_source,

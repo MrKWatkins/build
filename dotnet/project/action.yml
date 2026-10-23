@@ -1,0 +1,149 @@
+name: .NET project
+description: Build, test and validate documentation, then optionally publish packages and Pages in the calling job.
+inputs:
+  version:
+    description: Optional package version; defaults to the next minor release. Docs-only builds use the released version.
+    default: ''
+  directory:
+    default: src
+    description: Solution directory.
+  docs:
+    default: 'true'
+    description: Build and validate the documentation site.
+  publish-packages:
+    default: 'false'
+    description: Publish NuGet packages and create the release tag and GitHub release.
+  publish-docs:
+    default: 'false'
+    description: Deploy the validated Pages artifact.
+  api-ref:
+    description: Optional API source override for docs-only publication.
+    default: ''
+  docs-config:
+    default: docs/site.json
+    description: Documentation site configuration.
+  test-filter:
+    default: ''
+    description: Optional Microsoft Testing Platform filter expression.
+  coverage:
+    default: 'true'
+    description: Collect coverage and generate the GitHub summary.
+  coverage-assembly-filters:
+    default: +*
+    description: Coverage assembly filters.
+  dotnet-version:
+    default: 10.0.x
+    description: SDK version to install.
+  nuget-user:
+    description: NuGet trusted publishing profile.
+    default: MrKWatkins
+outputs:
+  commit:
+    description: Full API source commit used by the build.
+    value: ${{ steps.api.outputs.commit || steps.source.outputs.commit }}
+  version:
+    description: Resolved release or documentation display version.
+    value: ${{ steps.api.outputs.version || steps.version.outputs.version || inputs.version }}
+  page-url:
+    description: Deployed Pages URL.
+    value: ${{ steps.deploy.outputs.page-url }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ github.sha }}
+    - name: Resolve source commit
+      id: source
+      shell: python
+      run: |
+        import os, subprocess
+        with open(os.environ["GITHUB_OUTPUT"], "a") as file:
+            file.write("commit=" + subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() + "\n")
+    - name: Build and test .NET
+      if: ${{ inputs.publish-packages != 'true' && inputs.publish-docs != 'true' }}
+      uses: MrKWatkins/build/dotnet/build@main
+      with:
+        directory: ${{ inputs.directory }}
+        dotnet-version: ${{ inputs.dotnet-version }}
+        coverage: ${{ inputs.coverage }}
+        coverage-assembly-filters: ${{ inputs.coverage-assembly-filters }}
+        test-filter: ${{ inputs.test-filter }}
+    - name: Resolve package version
+      if: inputs.publish-packages == 'true'
+      id: version
+      uses: MrKWatkins/build/release/version@main
+      with:
+        version: ${{ inputs.version }}
+    - name: Build, test and pack .NET
+      if: inputs.publish-packages == 'true'
+      uses: MrKWatkins/build/dotnet/build-and-pack@main
+      with:
+        version: ${{ steps.version.outputs.version }}
+        directory: ${{ inputs.directory }}
+        dotnet-version: ${{ inputs.dotnet-version }}
+        coverage: ${{ inputs.coverage }}
+        coverage-assembly-filters: ${{ inputs.coverage-assembly-filters }}
+        test-filter: ${{ inputs.test-filter }}
+    - name: Resolve released API source
+      if: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' }}
+      id: api
+      uses: MrKWatkins/build/docs/release-source@main
+      with:
+        api-ref: ${{ inputs.api-ref }}
+    - name: Check out released API source
+      if: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' }}
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ steps.api.outputs.commit }}
+        path: artifacts/api-source
+    - name: Install API build SDK
+      if: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' }}
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+    - name: Build released API assemblies
+      if: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' }}
+      uses: MrKWatkins/build/docs/build-api@main
+      with:
+        config: ${{ inputs.docs-config }}
+        version: ${{ steps.api.outputs.version }}
+    - name: Build and validate documentation
+      if: inputs.docs == 'true'
+      uses: MrKWatkins/build/docs/build@main
+      with:
+        config: ${{ inputs.docs-config }}
+        version: ${{ steps.api.outputs.version || steps.version.outputs.version || inputs.version || 'dev' }}
+        source-ref: ${{ steps.api.outputs.commit || steps.source.outputs.commit }}
+        api-directory: ${{ steps.api.outputs.commit && 'artifacts/api-source' || '.' }}
+    - name: Upload packages
+      if: inputs.publish-packages == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: packages
+        path: artifacts/packages/*
+        if-no-files-found: error
+        retention-days: 14
+    - name: Upload validated site
+      if: inputs.publish-docs == 'true' && inputs.docs == 'true'
+      uses: actions/upload-pages-artifact@v5
+      with:
+        path: artifacts/docs
+        retention-days: 14
+    - name: Publish NuGet packages
+      if: inputs.publish-packages == 'true'
+      uses: MrKWatkins/build/dotnet/publish@main
+      with:
+        nuget-user: ${{ inputs.nuget-user }}
+    - name: Create GitHub release
+      if: inputs.publish-packages == 'true'
+      uses: MrKWatkins/build/release/create@main
+      with:
+        version: ${{ steps.version.outputs.version }}
+        commit: ${{ steps.source.outputs.commit }}
+    - name: Deploy documentation
+      id: deploy
+      if: inputs.publish-docs == 'true' && inputs.docs == 'true'
+      uses: MrKWatkins/build/docs/deploy@main
+      with:
+        version: ${{ steps.api.outputs.version || steps.version.outputs.version }}

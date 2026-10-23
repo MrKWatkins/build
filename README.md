@@ -26,23 +26,24 @@ input uses NUnit/MSTest filter expressions.
 
 ## Project workflows
 
-For the standard `src` and `docs/site.json` layout, projects only declare triggers and call the shared build workflow:
+For the standard `src` and `docs/site.json` layout, both workflows call `dotnet/project`. The build workflow validates everything without publishing:
 
 ```yaml
 name: Build and Test
 on: [push, pull_request]
 permissions:
   contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
-    uses: MrKWatkins/build/.github/workflows/dotnet-build.yml@main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: MrKWatkins/build/dotnet/project@main
 ```
 
-This builds and tests the code, then generates, lints and validates the documentation. The shared workflow handles SDK setup, concurrency and coverage.
-Set `docs: false` for a project without a documentation site. Other optional inputs match the build action: `directory`, `dotnet-version`, `coverage`,
-`coverage-assembly-filters` and `test-filter`; `docs-config` selects a different site configuration.
-
-The release workflow calls the **same build**, then publishes its prepared artifacts:
+Release uses the same action in one job, with publication enabled by the selected options:
 
 ```yaml
 name: Release
@@ -66,56 +67,51 @@ on:
         type: string
 permissions:
   contents: read
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
 jobs:
-  build:
-    uses: MrKWatkins/build/.github/workflows/dotnet-build.yml@main
-    with:
-      version: ${{ inputs.version }}
-      publish-packages: ${{ inputs.publish-packages }}
-      publish-docs: ${{ inputs.publish-docs }}
-      api-ref: ${{ inputs.api-ref }}
-  publish:
-    if: inputs.publish-packages || inputs.publish-docs
-    needs: build
+  release:
     runs-on: ubuntu-latest
     environment: github-pages
-    concurrency:
-      group: github-pages
-      cancel-in-progress: false
     permissions:
       contents: write
       pages: write
       id-token: write
     steps:
-      - uses: MrKWatkins/build/release/publish@main
+      - uses: MrKWatkins/build/dotnet/project@main
         with:
-          version: ${{ needs.build.outputs.version }}
-          commit: ${{ needs.build.outputs.commit }}
-          packages: ${{ inputs.publish-packages }}
-          docs: ${{ inputs.publish-docs }}
+          version: ${{ inputs.version }}
+          publish-packages: ${{ inputs.publish-packages }}
+          publish-docs: ${{ inputs.publish-docs }}
+          api-ref: ${{ inputs.api-ref }}
 ```
 
-Both publication options default to `true`. Leave `version` blank to increment the minor version of the highest stable `vX.Y.Z` tag, resetting the patch
+The shared action checks out the selected commit, installs the SDK, builds and tests, and validates documentation before any publication. Package releases compile
+once and pack existing outputs. Packages and the validated Pages artifact are retained for 14 days; publication uses the files prepared in the same job.
+There is no separate publishing job, package download or second SDK setup. `nuget-user` defaults to `MrKWatkins`.
+
+Both release options default to `true`. Leave `version` blank to increment the minor version of the highest stable `vX.Y.Z` tag, resetting the patch
 (for example, `v1.7.3` becomes `1.8.0`). An explicit version overrides this; the first release requires one because there is no previous tag. The resolved version
-is shown in the job summary and used for packages, documentation and the release tag. The shared build compiles and tests once, packs the existing outputs,
-then uploads the packages and validated Pages artifact with 14-day retention. `release/publish` publishes the selected artifacts without rebuilding.
-`nuget-user` defaults to `MrKWatkins`.
+is shown in the job summary and used for packages, documentation and the release tag.
 
-For a docs-only update, turn **publish-packages** off, leave **publish-docs** on and leave the version blank. The shared build uses current handwritten pages
-with API assemblies built from the highest stable release tag in a separate checkout. The site keeps the released version; no NuGet package, tag or GitHub
-release is created. The optional `api-ref` overrides API source for XML comment corrections. No separate docs workflow is needed.
+For a documentation update, turn **publish-packages** off, leave **publish-docs** on and leave the version blank. The action uses current handwritten pages with
+API assemblies built from the highest stable release tag in a separate checkout. The site keeps the released version; no NuGet package, tag or GitHub release
+is created. The optional `api-ref` overrides API source for XML comment corrections. There is no separate documentation workflow.
 
-Turning **publish-docs** off skips deployment; package builds still validate documentation. Turning both options off runs normal build, test and docs validation
-without publishing anything. For projects without a site, set `docs: false` on the reusable build and omit or disable the publication option.
+Turning **publish-docs** off skips deployment; package builds still validate documentation. Turning both options off runs ordinary build, test and documentation
+validation without publishing anything. For projects without a site, set `docs: 'false'` and disable the documentation publication option. Other optional inputs
+are `directory`, `dotnet-version`, `coverage`, `coverage-assembly-filters`, `test-filter` and `docs-config`.
 
-The publishing job stays in the project workflow because [NuGet validates `job_workflow_ref`](https://github.com/NuGet/NuGetGallery/blob/dev/src/NuGetGallery.Services/Authentication/Federated/GitHubTokenPolicyValidator.cs) against that repository and workflow filename.
-A composite action keeps that identity; moving the job into a cross-repository reusable workflow would not. Configure trusted publishing for the project's
-`release.yml`, not a workflow in this repository. GitHub requires job permissions, environment and concurrency to be declared by the caller, so those few lines
-remain in the project. No secrets need forwarding to the shared build.
+The job stays in the project workflow because [NuGet validates `job_workflow_ref`](https://github.com/NuGet/NuGetGallery/blob/dev/src/NuGetGallery.Services/Authentication/Federated/GitHubTokenPolicyValidator.cs) against that repository and workflow filename.
+A composite action preserves that identity. Configure trusted publishing for the project's `release.yml`. The caller declares permissions, the `github-pages`
+environment and concurrency; allow the release branch in that environment's deployment rules. Configure Pages to publish using **GitHub Actions**.
 
-The shared Python helper reads the API project paths from the site configuration (using only the standard library), so no project names or assembly paths need repeating in workflow YAML. The `.NET` API convention is
-`<project>/bin/Release/<framework>/<assembly>.dll`, with one `.csproj` in each project directory. API source selection and explicit overrides work as described
-under documentation publishing below.
+Rerunning Release reruns the whole job. A blank version is recalculated from the current tags; after package publication, use **publish-packages** off for a
+subsequent documentation update. Existing tags are never moved.
+
+The shared Python helper reads API project paths from the site configuration using only the standard library. The convention is
+`<project>/bin/Release/<framework>/<assembly>.dll`, with one `.csproj` per project directory; assembly paths do not need repeating in workflow YAML.
 
 The individual actions remain available for workflows that need custom preparation:
 
@@ -147,8 +143,7 @@ Use `docs/build` for the documentation validation gate and `docs/deploy` for the
 | `dotnet/publish` | Required `nuget-user`; `directory` defaults to `artifacts/packages`                          | Uses trusted publishing to push existing packages to nuget.org, including adjacent symbol packages. Uses `--skip-duplicate` for retries. Never compiles, packs or creates a release. |
 | `release/create` | Required `version` and full `commit` SHA                                                     | Confirms the commit exists in the consumer repository, creates its tag and a release with generated notes. An existing lightweight or annotated tag must resolve to that commit.     |
 
-Pack and publish expect the .NET SDK already installed by the preceding build. For separate publishing jobs, download the prepared package artifact and install
-the SDK there. Upload packages and validated documentation before publication, with 14-day artifact retention.
+Pack and publish use the SDK installed by the preceding build. Upload packages and validated documentation before publication, with 14-day artifact retention.
 
 NuGet trusted publishing uses `NuGet/login@v1` immediately before the push and requires `nuget-user` plus `id-token: write` on that job. Configure the matching
 trusted-publishing policy on nuget.org for each consumer workflow. There is no long-lived API-key input or `NUGET_API_TOKEN` fallback.
@@ -258,8 +253,7 @@ The header displays the supplied release version, or an explicit development lab
 
 ## Documentation publishing
 
-Upload `artifacts/docs` with `actions/upload-pages-artifact@v5`, retaining it for deployment retries. A separate deployment job calls `docs/deploy` with the library
-`version`. That job needs `contents: read`, `pages: write`, `id-token: write`, the `github-pages` environment and a shared `github-pages` concurrency group with
+The project action uploads `artifacts/docs` with `actions/upload-pages-artifact@v5`, then calls `docs/deploy` with the library `version` in the same job. That job needs `contents: read`, `pages: write`, `id-token: write`, the `github-pages` environment and a shared `github-pages` concurrency group with
 `cancel-in-progress: false`. The Release workflow uses this group for both full releases and documentation updates. Set the consumer's Pages source to **GitHub Actions**.
 
 `docs/deploy` checks the highest stable `vX.Y.Z` tag immediately before deployment and refuses a different version. Tags mark published library releases; the check

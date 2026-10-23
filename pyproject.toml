@@ -5,7 +5,11 @@ requires-python = ">=3.12"
 dependencies = []
 
 [dependency-groups]
-dev = ["pytest", "ruff"]
+dev = [
+    "pytest",
+    "pyyaml>=6.0.3",
+    "ruff",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
