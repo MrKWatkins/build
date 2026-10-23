@@ -105,8 +105,12 @@ scripts perform real publication when invoked.
 
 ## Maintaining this repository
 
-CI runs ShellCheck, actionlint, `bash tests/test.sh` and the documentation image tests. The package tests use the real SDK to prove package/symbol creation does not rebuild, then
+CI runs ShellCheck, actionlint, `bash tests/test.sh`, `bash tests/images.sh` and the documentation image tests. The package tests use the real SDK to prove package/symbol creation does not rebuild, then
 recording command doubles to check build failure propagation, publication-only behaviour and commit/tag validation. They never push packages or create releases.
+
+The workflow has two jobs. **Build and Test** runs all checks and image tests on pushes to every branch, pull requests and manual dispatches. **Publish** runs only
+after that job succeeds on a push to `main`. It downloads and uploads the exact tested images without rebuilding or retesting them. Runs on `main` are serialised;
+new pushes do not cancel an active publication. Manual workflow runs only build and test.
 
 Locally, with .NET 10, ShellCheck and actionlint installed:
 
@@ -114,6 +118,7 @@ Locally, with .NET 10, ShellCheck and actionlint installed:
 shellcheck -x -P SCRIPTDIR dotnet/*/*.sh release/create/*.sh scripts/*.sh tests/*.sh docs/scripts/*.sh images/*.sh
 actionlint
 bash tests/test.sh
+bash tests/images.sh
 ```
 
 Dependabot maintains action references. Update the pinned ReportGenerator version in `dotnet/build/build.sh` centrally and validate before merging.
@@ -180,9 +185,7 @@ with no SDK or WASM workload. npm dependencies are locked; Vite is overridden to
 Build and test locally with Docker and the .NET 10 SDK:
 
 ```bash
-docker build -f images/docs-base/Dockerfile -t docs-base:local .
-docker build -f images/docs-dotnet/Dockerfile -t docs-dotnet:local .
-bash tests/docs.sh
+IMAGE_VERSION="sha-$(git rev-parse HEAD)" bash images/build.sh
 ```
 
 To view the example site, select **Preview documentation** in a JetBrains IDE's run configurations, or run `bash tests/preview-docs.sh`.
@@ -192,15 +195,15 @@ Set `DOCS_PORT` to use another port. Restart the run after editing the fixtures.
 Tests exercise both images, multiple API assemblies, generic/nested types, inherited framework prose, subpath links/assets, user-owned output and preview.
 Deliberate prose, dead-link and anchor failures must return nonzero without producing a deployable site.
 
-After reviewing and pushing, run **Publish documentation images** with `operation: build` and a new toolchain version. This tests both images, publishes immutable
-version tags and builds the .NET release against the exact published base digest. The workflow uses `GITHUB_TOKEN` with `packages: write` and logs digests and versions.
-Existing version tags are never replaced; use a new version after a partially published release.
+Successful pushes to `main` automatically publish both images with immutable `sha-<full commit SHA>` tags and update `latest`. Both images are built and tested
+together without registry credentials. The .NET image records the exact base image ID; publication checks that identity, source commit and image version after loading
+the tested Docker archive. The archive is retained for one day. Publication verifies public access before updating `latest`. The workflow uses `GITHUB_TOKEN` with
+`packages: write` and logs digests and tool versions. Existing immutable tags are never replaced.
 
-For the first release, change both GHCR packages to **Public** in their Package settings. GitHub initially makes new packages private, even for a public source
-repository. Then run the workflow at the same source commit with `operation: promote` and that version. Promotion verifies anonymous access and reruns tests before
-advancing `latest`. Repeat promotion at an older release's source commit to roll back. Neither operation deploys consumer documentation.
+Build and test failures prevent the Publish job from running. Image publication happens only on pushes to `main`; there are no manual release, promotion or rollback
+workflows. Registry maintenance can be performed directly in GHCR. Both GHCR packages must be public before `latest` is updated.
 
-Keep the image version independent of library versions. Update pinned tools here, test, publish a new toolchain version and promote it; consumers following `latest`
-need no configuration change. Deployment and docs-only reference selection will be proven in the first consumer pilot.
+Image tags are independent of library versions. Update pinned tools here and merge to `main`; consumers following `latest` need no configuration change.
+Deployment and docs-only reference selection will be proven in the first consumer pilot.
 
 Original project code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE).
