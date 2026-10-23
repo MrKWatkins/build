@@ -1,0 +1,49 @@
+name: .NET Build and Pack
+description: Build and test once, then package the validated Release outputs.
+inputs:
+  version:
+    description: Stable release version without a v prefix.
+    required: true
+  directory:
+    description: Solution directory.
+    default: src
+  output:
+    description: Empty package output directory.
+    default: artifacts/packages
+  test-filter:
+    description: Optional NUnit/MSTest filter expression.
+    default: ''
+  coverage:
+    description: Collect coverage and generate the GitHub summary.
+    default: 'true'
+  coverage-assembly-filters:
+    description: Coverage assembly filters.
+    default: +*
+  dotnet-version:
+    description: SDK version to install.
+    default: 10.0.x
+outputs:
+  directory:
+    description: Absolute directory containing the prepared packages.
+    value: ${{ steps.prepare.outputs.directory }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+    - name: Build, test and pack
+      id: prepare
+      shell: python
+      env:
+        BUILD_DIRECTORY: ${{ inputs.directory }}
+        PACKAGE_DIRECTORY: ${{ inputs.output }}
+        VERSION: ${{ inputs.version }}
+        TEST_FILTER: ${{ inputs.test-filter }}
+        COVERAGE: ${{ inputs.coverage }}
+        COVERAGE_ASSEMBLY_FILTERS: ${{ inputs.coverage-assembly-filters }}
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'build-and-pack']
+        runpy.run_path(sys.argv[0], run_name="__main__")

@@ -24,23 +24,100 @@ Test projects need the MTP runner and, when coverage is enabled, the
 `Microsoft.Testing.Extensions.CodeCoverage` extension. The optional `test-filter`
 input uses NUnit/MSTest filter expressions.
 
-## Validation builds
+## Project workflows
+
+For the standard `src` and `docs/site.json` layout, projects only declare triggers and call the shared build workflow:
 
 ```yaml
-name: Build
-on:
-  push:
-    branches: [main]
-  pull_request:
+name: Build and Test
+on: [push, pull_request]
 permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: MrKWatkins/build/dotnet/build@main
+    uses: MrKWatkins/build/.github/workflows/dotnet-build.yml@main
 ```
+
+This builds and tests the code, then generates, lints and validates the documentation. The shared workflow handles SDK setup, concurrency and coverage.
+Set `docs: false` for a project without a documentation site. Other optional inputs match the build action: `directory`, `dotnet-version`, `coverage`,
+`coverage-assembly-filters` and `test-filter`; `docs-config` selects a different site configuration.
+
+The release workflow calls the **same build**, then publishes its prepared artifacts:
+
+```yaml
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional version without v; blank increments the latest stable tag minor version
+        type: string
+        required: false
+      publish-packages:
+        description: Publish NuGet packages and create a release
+        type: boolean
+        default: true
+      publish-docs:
+        description: Publish documentation
+        type: boolean
+        default: true
+      api-ref:
+        description: Optional API source override for docs-only XML comment corrections
+        type: string
+permissions:
+  contents: read
+jobs:
+  build:
+    uses: MrKWatkins/build/.github/workflows/dotnet-build.yml@main
+    with:
+      version: ${{ inputs.version }}
+      publish-packages: ${{ inputs.publish-packages }}
+      publish-docs: ${{ inputs.publish-docs }}
+      api-ref: ${{ inputs.api-ref }}
+  publish:
+    if: inputs.publish-packages || inputs.publish-docs
+    needs: build
+    runs-on: ubuntu-latest
+    environment: github-pages
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - uses: MrKWatkins/build/release/publish@main
+        with:
+          version: ${{ needs.build.outputs.version }}
+          commit: ${{ needs.build.outputs.commit }}
+          packages: ${{ inputs.publish-packages }}
+          docs: ${{ inputs.publish-docs }}
+```
+
+Both publication options default to `true`. Leave `version` blank to increment the minor version of the highest stable `vX.Y.Z` tag, resetting the patch
+(for example, `v1.7.3` becomes `1.8.0`). An explicit version overrides this; the first release requires one because there is no previous tag. The resolved version
+is shown in the job summary and used for packages, documentation and the release tag. The shared build compiles and tests once, packs the existing outputs,
+then uploads the packages and validated Pages artifact with 14-day retention. `release/publish` publishes the selected artifacts without rebuilding.
+`nuget-user` defaults to `MrKWatkins`.
+
+For a docs-only update, turn **publish-packages** off, leave **publish-docs** on and leave the version blank. The shared build uses current handwritten pages
+with API assemblies built from the highest stable release tag in a separate checkout. The site keeps the released version; no NuGet package, tag or GitHub
+release is created. The optional `api-ref` overrides API source for XML comment corrections. No separate docs workflow is needed.
+
+Turning **publish-docs** off skips deployment; package builds still validate documentation. Turning both options off runs normal build, test and docs validation
+without publishing anything. For projects without a site, set `docs: false` on the reusable build and omit or disable the publication option.
+
+The publishing job stays in the project workflow because [NuGet validates `job_workflow_ref`](https://github.com/NuGet/NuGetGallery/blob/dev/src/NuGetGallery.Services/Authentication/Federated/GitHubTokenPolicyValidator.cs) against that repository and workflow filename.
+A composite action keeps that identity; moving the job into a cross-repository reusable workflow would not. Configure trusted publishing for the project's
+`release.yml`, not a workflow in this repository. GitHub requires job permissions, environment and concurrency to be declared by the caller, so those few lines
+remain in the project. No secrets need forwarding to the shared build.
+
+The shared Python helper reads the API project paths from the site configuration (using only the standard library), so no project names or assembly paths need repeating in workflow YAML. The `.NET` API convention is
+`<project>/bin/Release/<framework>/<assembly>.dll`, with one `.csproj` in each project directory. API source selection and explicit overrides work as described
+under documentation publishing below.
+
+The individual actions remain available for workflows that need custom preparation:
 
 `dotnet/build` restores, checks formatting, builds and tests. Formatting remains advisory during consolidation; compilation, tests and coverage reporting must
 succeed. Source changes should always run this workflow, including after docs validation is added.
@@ -54,25 +131,24 @@ Build inputs: `directory` (default `src`), `version` (optional), `test-filter` (
 
 ## Preparing a release
 
-The consumer owns the release sequence. Resolve the checked-out commit with `git rev-parse HEAD`; use that SHA and the same supplied version throughout.
+The standard workflow above handles this sequence. When composing actions directly, resolve the checked-out commit with `git rev-parse HEAD`; use that SHA and the same supplied version throughout.
 
-1. Call `dotnet/build` with `version`.
-2. Call `dotnet/pack` with the same `version` to prepare packages and symbols.
-3. Prepare project assets, then validate and build the complete documentation.
-4. Call `dotnet/publish` on the prepared package directory.
-5. Call `release/create` with `version` and the resolved `commit`.
-6. Deploy the exact validated documentation artifact.
+1. Call `dotnet/build-and-pack` with `version` to build, test and prepare packages and symbols.
+2. Prepare project assets, then validate and build the complete documentation.
+3. Upload the validated artifacts.
+4. Publish the prepared packages, create the matching release and deploy the exact validated site.
 
 Use `docs/build` for the documentation validation gate and `docs/deploy` for the validated Pages artifact.
 
 | Action           | Inputs                                                                                       | Behaviour                                                                                                                                                                            |
 |------------------|----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `dotnet/build-and-pack` | Required `version`; other build inputs plus package `output` | Builds and tests once, then calls pack with `--no-build --no-restore`. Output `directory` is the prepared package path. |
 | `dotnet/pack`    | Required `version`; `directory` defaults to `src`; `output` defaults to `artifacts/packages` | Packs existing Release outputs with `--no-build --no-restore`; includes `.snupkg`; rejects nonempty output directories. Output `directory` is the absolute package path.             |
 | `dotnet/publish` | Required `nuget-user`; `directory` defaults to `artifacts/packages`                          | Uses trusted publishing to push existing packages to nuget.org, including adjacent symbol packages. Uses `--skip-duplicate` for retries. Never compiles, packs or creates a release. |
 | `release/create` | Required `version` and full `commit` SHA                                                     | Confirms the commit exists in the consumer repository, creates its tag and a release with generated notes. An existing lightweight or annotated tag must resolve to that commit.     |
 
 Pack and publish expect the .NET SDK already installed by the preceding build. For separate publishing jobs, download the prepared package artifact and install
-the SDK there. Upload packages and validated documentation before publication, with enough artifact retention for recovery.
+the SDK there. Upload packages and validated documentation before publication, with 14-day artifact retention.
 
 NuGet trusted publishing uses `NuGet/login@v1` immediately before the push and requires `nuget-user` plus `id-token: write` on that job. Configure the matching
 trusted-publishing policy on nuget.org for each consumer workflow. There is no long-lived API-key input or `NUGET_API_TOKEN` fallback.
@@ -80,17 +156,17 @@ trusted-publishing policy on nuget.org for each consumer workflow. There is no l
 Release creation uses the calling job's GitHub token and needs `contents: write`. Keep those permissions on publishing jobs and never invoke publication for
 untrusted pull requests. Documentation containers will not receive these credentials.
 
-Publishing packages, creating a release and deploying a site are separate operations. If only deployment fails, retry the retained site artifact or use the
-docs-only workflow without republishing packages or creating another tag. If a package push partially fails, retry the same package artifacts. An existing
-GitHub release is not recreated by `release/create`; skip that step on recovery once it has succeeded. Tags are never moved.
+If documentation deployment fails after packages are published, run **Release** with **publish-packages** off and **publish-docs** on. It rebuilds and validates
+updated documentation for the existing release without publishing another package or creating a tag.
 
 ## Local commands
 
 Scripts run from the consumer repository root and use the same implementation as the actions. Replace `/path/to/build` with this repository's location:
 
 ```bash
-VERSION=1.2.3 bash /path/to/build/dotnet/build/build.sh
-VERSION=1.2.3 bash /path/to/build/dotnet/pack/pack.sh
+VERSION=1.2.3 python3 /path/to/build/scripts/build.py build
+VERSION=1.2.3 python3 /path/to/build/scripts/build.py pack
+VERSION=1.2.3 python3 /path/to/build/scripts/build.py build-and-pack
 ```
 
 `BUILD_DIRECTORY` defaults to `src` for build and pack. `PACKAGE_DIRECTORY` defaults to `artifacts/packages` for pack and publish. Build also accepts
@@ -100,29 +176,31 @@ initial working directory. Omit `VERSION` for ordinary development builds.
 The publishing action handles OIDC authentication; its push script consumes the short-lived `NUGET_API_KEY` output from `NuGet/login`, not a stored repository
 secret. Local builds and packing need no publishing credentials.
 
-`release/create/create.sh` requires `VERSION`, `COMMIT` and an authenticated `gh`; `GH_REPO=owner/name` selects the repository outside GitHub Actions. These
+`python3 scripts/build.py create-release` requires `VERSION`, `COMMIT` and an authenticated `gh`; `GH_REPO=owner/name` selects the repository outside GitHub Actions. These
 scripts perform real publication when invoked.
 
 ## Maintaining this repository
 
-CI runs ShellCheck, actionlint, `bash tests/test.sh`, `bash tests/images.sh` and the documentation image tests. The package tests use the real SDK to prove package/symbol creation does not rebuild, then
-recording command doubles to check build failure propagation, publication-only behaviour and commit/tag validation. They never push packages or create releases.
+The automation lives in `scripts/build.py` and uses Python 3.12+ with no runtime packages. Composite actions invoke it with the Python runner.
+Local development uses `uv`, with Pytest and Ruff locked in `uv.lock`. CI checks Python formatting, linting, workflow syntax and tests. Pytest command doubles
+exercise publication boundaries without credentials; integration tests use the real SDK and Docker images.
 
 The workflow has two jobs. **Build and Test** runs all checks and image tests on pushes to every branch, pull requests and manual dispatches. **Publish** runs only
 after that job succeeds on a push to `main`. It downloads and uploads the exact tested images without rebuilding or retesting them. Runs on `main` are serialised;
 new pushes do not cancel an active publication. Manual workflow runs only build and test.
 
-Locally, with .NET 10, ShellCheck and actionlint installed:
+Locally, with uv installed:
 
-```bash
-shellcheck -x -P SCRIPTDIR dotnet/*/*.sh release/create/*.sh scripts/*.sh tests/*.sh docs/*/*.sh images/*.sh
-actionlint
-bash tests/test.sh
-bash tests/images.sh
-bash tests/docs-publication.sh
+```sh
+uv sync --locked
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
 ```
 
-Dependabot maintains action references. Update the pinned ReportGenerator version in `dotnet/build/build.sh` centrally and validate before merging.
+Use `uv run pytest --run-dotnet` for the real .NET 10 packaging tests. `uv run python scripts/build.py build-images` builds both Docker images and runs the
+Docker documentation tests; `uv run pytest tests/test_docs.py --run-docker` reruns those tests against prepared images. Ordinary tests need no .NET SDK,
+Docker or publishing credentials. CI also runs actionlint. Dependabot maintains action references. ReportGenerator is pinned centrally in `scripts/build.py`.
 
 ## Documentation
 
@@ -170,8 +248,8 @@ Vale uses shared British spelling and technical-prose rules, including `strongly
 Local builds and previews need Docker, with no Node or .NET installation beyond preparing the assemblies:
 
 ```bash
-bash /path/to/build/docs/scripts/docs.sh build --version 1.2.3 --source-ref "$(git rev-parse HEAD)"
-bash /path/to/build/docs/scripts/docs.sh serve --source-ref "$(git rev-parse HEAD)"
+python3 /path/to/build/scripts/build.py docs build --version 1.2.3 --source-ref "$(git rev-parse HEAD)"
+python3 /path/to/build/scripts/build.py docs serve --source-ref "$(git rev-parse HEAD)"
 ```
 
 The wrapper pulls the selected image and resolves it once to a digest for execution. Set `DOCS_IMAGE` to a version tag or digest to diagnose an older toolchain.
@@ -182,15 +260,14 @@ The header displays the supplied release version, or an explicit development lab
 
 Upload `artifacts/docs` with `actions/upload-pages-artifact@v5`, retaining it for deployment retries. A separate deployment job calls `docs/deploy` with the library
 `version`. That job needs `contents: read`, `pages: write`, `id-token: write`, the `github-pages` environment and a shared `github-pages` concurrency group with
-`cancel-in-progress: false`. Both release and docs-only deployments must use that same group. Set the consumer's Pages source to **GitHub Actions**.
+`cancel-in-progress: false`. The Release workflow uses this group for both full releases and documentation updates. Set the consumer's Pages source to **GitHub Actions**.
 
 `docs/deploy` checks the highest stable `vX.Y.Z` tag immediately before deployment and refuses a different version. Tags mark published library releases; the check
 uses semantic version order and ignores prereleases. This also works for older repositories that published a package and tag without creating a GitHub release.
 
-For docs-only publication, check out handwritten documentation at the selected commit, then call `docs/release-source`. It outputs `version`, `release-tag` and the
-resolved API `commit`. Check out that commit under an ignored directory such as `artifacts/api-source`, build its Release API assemblies with the released version,
-then pass `api-directory: artifacts/api-source` and `source-ref: <resolved API commit>` to `docs/build`. Upload and deploy that validated artifact using the same version.
-This workflow needs no package publication or release-creation step.
+The Release workflow handles documentation updates with **publish-packages** off. Internally, `docs/release-source` resolves the existing release version and
+API commit, and `docs/build-api` builds the API projects from that commit in a separate checkout. This keeps the site on the released API while handwritten pages
+come from the selected branch. There is no separate documentation workflow.
 
 The optional `api-ref` input to `docs/release-source` selects an explicit source override for XML comment corrections. It keeps the released version in the header and
 reports both API and handwritten-documentation commits, prominently identifying overrides. Existing releases may have XML comments that fail a newly enabled Vale
@@ -204,10 +281,10 @@ with no SDK or WASM workload. npm dependencies are locked; Vite is overridden to
 Build and test locally with Docker and the .NET 10 SDK:
 
 ```bash
-IMAGE_VERSION="sha-$(git rev-parse HEAD)" bash images/build.sh
+uv run python scripts/build.py build-images
 ```
 
-To view the example site, select **Preview documentation** in a JetBrains IDE's run configurations, or run `bash tests/preview-docs.sh`.
+To view the example site, select **Preview documentation** in a JetBrains IDE's run configurations, or run `uv run python scripts/build.py preview-docs`.
 It builds the local images and fixture assemblies, then serves `http://localhost:5173/example/`. Stop the run to remove the preview container.
 Set `DOCS_PORT` to use another port. Restart the run after editing the fixtures.
 

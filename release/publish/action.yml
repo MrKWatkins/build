@@ -1,0 +1,64 @@
+name: Publish release
+description: Publish the validated package and Pages artifacts, then create the matching release.
+inputs:
+  version:
+    description: Version used by the shared build.
+    required: true
+  commit:
+    description: Full source commit returned by the shared build.
+    required: true
+  nuget-user:
+    description: NuGet trusted publishing profile.
+    default: MrKWatkins
+  packages:
+    description: Publish NuGet packages and create the tag/GitHub release.
+    default: 'true'
+  docs:
+    description: Deploy the validated Pages artifact.
+    default: 'true'
+  dotnet-version:
+    description: SDK version to install.
+    default: 10.0.x
+outputs:
+  page-url:
+    description: Deployed Pages URL.
+    value: ${{ steps.docs.outputs.page-url }}
+runs:
+  using: composite
+  steps:
+    - name: Validate release inputs
+      shell: python
+      env:
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+        VERSION: ${{ inputs.version }}
+        COMMIT: ${{ inputs.commit }}
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], "validate-release"]
+        runpy.run_path(sys.argv[0], run_name="__main__")
+    - uses: actions/setup-dotnet@v6
+      if: inputs.packages == 'true'
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+    - uses: actions/download-artifact@v8
+      if: inputs.packages == 'true'
+      with:
+        name: packages
+        path: artifacts/packages
+    - name: Publish NuGet packages
+      if: inputs.packages == 'true'
+      uses: MrKWatkins/build/dotnet/publish@main
+      with:
+        nuget-user: ${{ inputs.nuget-user }}
+    - name: Create GitHub release
+      if: inputs.packages == 'true'
+      uses: MrKWatkins/build/release/create@main
+      with:
+        version: ${{ inputs.version }}
+        commit: ${{ inputs.commit }}
+    - name: Deploy documentation
+      if: inputs.docs == 'true'
+      id: docs
+      uses: MrKWatkins/build/docs/deploy@main
+      with:
+        version: ${{ inputs.version }}

@@ -1,0 +1,22 @@
+name: Resolve release version
+description: Use an explicit stable version or increment the latest stable tag's minor version.
+inputs:
+  version:
+    description: Optional stable version without a v prefix.
+outputs:
+  version:
+    description: Resolved package version without a v prefix.
+    value: ${{ steps.resolve.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: python
+      env:
+        VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'release-version']
+        runpy.run_path(sys.argv[0], run_name="__main__")

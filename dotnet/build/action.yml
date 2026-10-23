@@ -15,7 +15,7 @@ inputs:
     default: 'true'
   coverage-assembly-filters:
     description: Optional ReportGenerator assembly filters.
-    default: '+*'
+    default: +*
   dotnet-version:
     description: .NET SDK version to install.
     default: 10.0.x
@@ -26,12 +26,15 @@ runs:
       with:
         dotnet-version: ${{ inputs.dotnet-version }}
     - name: Build and test
-      shell: bash
+      shell: python
       env:
-        BUILD_SCRIPT: ${{ github.action_path }}/build.sh
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
         BUILD_DIRECTORY: ${{ inputs.directory }}
         VERSION: ${{ inputs.version }}
         TEST_FILTER: ${{ inputs.test-filter }}
         COVERAGE: ${{ inputs.coverage }}
         COVERAGE_ASSEMBLY_FILTERS: ${{ inputs.coverage-assembly-filters }}
-      run: bash "$BUILD_SCRIPT"
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'build']
+        runpy.run_path(sys.argv[0], run_name="__main__")

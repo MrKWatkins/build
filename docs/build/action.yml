@@ -26,16 +26,16 @@ runs:
   using: composite
   steps:
     - id: build
-      shell: bash
+      shell: python
       env:
-        DOCS_SCRIPT: ${{ github.action_path }}/../scripts/docs.sh
         DOCS_IMAGE: ${{ inputs.image }}
         CONFIG: ${{ inputs.config }}
         VERSION: ${{ inputs.version }}
         SOURCE_REF: ${{ inputs.source-ref }}
         API_DIRECTORY: ${{ inputs.api-directory }}
         OUTPUT: ${{ inputs.output }}
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
       run: |
-        source_ref=${SOURCE_REF:-$(git rev-parse HEAD)}
-        bash "$DOCS_SCRIPT" build --config "$CONFIG" --version "$VERSION" --source-ref "$source_ref" --api-directory "$API_DIRECTORY" --output "$OUTPUT"
-        echo "directory=$(realpath "$OUTPUT")" >> "$GITHUB_OUTPUT"
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'docs', 'build']
+        runpy.run_path(sys.argv[0], run_name="__main__")

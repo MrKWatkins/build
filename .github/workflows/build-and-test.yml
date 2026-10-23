@@ -18,20 +18,22 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
-      - name: Check shell scripts
-        run: shellcheck -x -P SCRIPTDIR dotnet/*/*.sh release/create/*.sh scripts/*.sh tests/*.sh docs/*/*.sh images/*.sh
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Check Python
+        run: |
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
       - name: Check workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -color
       - name: Test build and publication boundaries
-        run: bash tests/test.sh
-      - name: Test image publication boundaries
-        run: bash tests/images.sh
-      - name: Test documentation publication boundaries
-        run: bash tests/docs-publication.sh
+        run: uv run --frozen pytest --run-dotnet
       - name: Build and test documentation images
         env:
           IMAGE_VERSION: sha-${{ github.sha }}
-        run: bash images/build.sh
+        run: uv run --frozen python scripts/build.py build-images
       - name: Save tested images
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: docker save --output "$RUNNER_TEMP/documentation-images.tar" docs-base:local docs-dotnet:local
@@ -68,4 +70,4 @@ jobs:
         env:
           IMAGE_VERSION: sha-${{ github.sha }}
           GH_TOKEN: ${{ github.token }}
-        run: bash images/publish.sh
+        run: python3 scripts/build.py publish-images

@@ -11,10 +11,13 @@ runs:
   using: composite
   steps:
     - name: Create tag and release
-      shell: bash
+      shell: python
       env:
-        RELEASE_SCRIPT: ${{ github.action_path }}/create.sh
         VERSION: ${{ inputs.version }}
         COMMIT: ${{ inputs.commit }}
         GH_TOKEN: ${{ github.token }}
-      run: bash "$RELEASE_SCRIPT"
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'create-release']
+        runpy.run_path(sys.argv[0], run_name="__main__")

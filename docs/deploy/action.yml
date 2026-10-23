@@ -15,12 +15,15 @@ runs:
   using: composite
   steps:
     - name: Check release freshness
-      shell: bash
+      shell: python
       env:
-        FRESHNESS_SCRIPT: ${{ github.action_path }}/freshness.sh
         VERSION: ${{ inputs.version }}
         GH_TOKEN: ${{ github.token }}
-      run: bash "$FRESHNESS_SCRIPT"
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'freshness']
+        runpy.run_path(sys.argv[0], run_name="__main__")
     - id: deploy
       uses: actions/deploy-pages@v5
       with:

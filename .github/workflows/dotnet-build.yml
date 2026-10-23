@@ -1,0 +1,139 @@
+name: .NET Build and Test
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Optional package version; defaults to the next minor release. Docs-only builds use the released version.
+        type: string
+        default: ''
+      directory:
+        type: string
+        default: src
+      docs:
+        type: boolean
+        default: true
+      publish-packages:
+        type: boolean
+        default: false
+      publish-docs:
+        type: boolean
+        default: false
+      api-ref:
+        description: Optional API source override for docs-only publication.
+        type: string
+        default: ''
+      docs-config:
+        type: string
+        default: docs/site.json
+      test-filter:
+        type: string
+        default: ''
+      coverage:
+        type: boolean
+        default: true
+      coverage-assembly-filters:
+        type: string
+        default: '+*'
+      dotnet-version:
+        type: string
+        default: 10.0.x
+    outputs:
+      commit:
+        description: Full API source commit used by the build.
+        value: ${{ jobs.build.outputs.commit }}
+      version:
+        description: Resolved release or documentation display version.
+        value: ${{ jobs.build.outputs.version }}
+permissions:
+  contents: read
+concurrency:
+  group: dotnet-build-${{ github.workflow }}-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: ${{ !inputs.publish-packages && !inputs.publish-docs }}
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.api.outputs.commit || steps.source.outputs.commit }}
+      version: ${{ steps.api.outputs.version || steps.version.outputs.version || inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Resolve source commit
+        id: source
+        shell: python
+        run: |
+          import os, subprocess
+          with open(os.environ["GITHUB_OUTPUT"], "a") as file:
+              file.write("commit=" + subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() + "\n")
+      - name: Build and test .NET
+        if: ${{ !inputs.publish-packages && !inputs.publish-docs }}
+        uses: MrKWatkins/build/dotnet/build@main
+        with:
+          directory: ${{ inputs.directory }}
+          dotnet-version: ${{ inputs.dotnet-version }}
+          coverage: ${{ inputs.coverage }}
+          coverage-assembly-filters: ${{ inputs.coverage-assembly-filters }}
+          test-filter: ${{ inputs.test-filter }}
+      - name: Resolve package version
+        if: inputs.publish-packages
+        id: version
+        uses: MrKWatkins/build/release/version@main
+        with:
+          version: ${{ inputs.version }}
+      - name: Build, test and pack .NET
+        if: inputs.publish-packages
+        uses: MrKWatkins/build/dotnet/build-and-pack@main
+        with:
+          version: ${{ steps.version.outputs.version }}
+          directory: ${{ inputs.directory }}
+          dotnet-version: ${{ inputs.dotnet-version }}
+          coverage: ${{ inputs.coverage }}
+          coverage-assembly-filters: ${{ inputs.coverage-assembly-filters }}
+          test-filter: ${{ inputs.test-filter }}
+      - name: Resolve released API source
+        if: ${{ inputs.publish-docs && !inputs.publish-packages }}
+        id: api
+        uses: MrKWatkins/build/docs/release-source@main
+        with:
+          api-ref: ${{ inputs.api-ref }}
+      - name: Check out released API source
+        if: ${{ inputs.publish-docs && !inputs.publish-packages }}
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.api.outputs.commit }}
+          path: artifacts/api-source
+      - name: Install API build SDK
+        if: ${{ inputs.publish-docs && !inputs.publish-packages }}
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+      - name: Build released API assemblies
+        if: ${{ inputs.publish-docs && !inputs.publish-packages }}
+        uses: MrKWatkins/build/docs/build-api@main
+        with:
+          config: ${{ inputs.docs-config }}
+          version: ${{ steps.api.outputs.version }}
+      - name: Build and validate documentation
+        if: inputs.docs
+        uses: MrKWatkins/build/docs/build@main
+        with:
+          config: ${{ inputs.docs-config }}
+          version: ${{ steps.api.outputs.version || steps.version.outputs.version || inputs.version || 'dev' }}
+          source-ref: ${{ steps.api.outputs.commit || steps.source.outputs.commit }}
+          api-directory: ${{ steps.api.outputs.commit && 'artifacts/api-source' || '.' }}
+      - name: Upload packages
+        if: inputs.publish-packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: artifacts/packages/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload validated site
+        if: inputs.publish-docs && inputs.docs
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: artifacts/docs
+          retention-days: 14

@@ -1,0 +1,25 @@
+name: Build documentation API inputs
+description: Build the released API projects listed by the site configuration in a separate checkout.
+inputs:
+  version:
+    description: Published library version.
+    required: true
+  config:
+    description: Current documentation site configuration.
+    default: docs/site.json
+  directory:
+    description: API source checkout directory.
+    default: artifacts/api-source
+runs:
+  using: composite
+  steps:
+    - shell: python
+      env:
+        DOCS_CONFIG: ${{ inputs.config }}
+        VERSION: ${{ inputs.version }}
+        API_DIRECTORY: ${{ inputs.directory }}
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'build-api']
+        runpy.run_path(sys.argv[0], run_name="__main__")

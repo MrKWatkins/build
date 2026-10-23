@@ -1,0 +1,16 @@
+[project]
+name = "mrkwatkins-build"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["docker: documentation image integration tests", "dotnet: real SDK packing integration tests"]
+
+[tool.ruff]
+line-length = 120

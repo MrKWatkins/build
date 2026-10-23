@@ -1,5 +1,5 @@
 name: Resolve documentation API source
-description: Resolve the latest released version and the API source commit for a docs-only build.
+description: Resolve the latest released version and the API source commit when Release publishes documentation without packages.
 inputs:
   api-ref:
     description: Optional API source override for XML documentation corrections
@@ -10,16 +10,16 @@ outputs:
   commit:
     description: Resolved API source commit SHA
     value: ${{ steps.resolve.outputs.commit }}
-  release-tag:
-    description: Latest stable release tag
-    value: ${{ steps.resolve.outputs.release-tag }}
 runs:
   using: composite
   steps:
     - id: resolve
-      shell: bash
+      shell: python
       env:
-        RESOLVE_SCRIPT: ${{ github.action_path }}/resolve.sh
         API_REF: ${{ inputs.api-ref }}
         GH_TOKEN: ${{ github.token }}
-      run: bash "$RESOLVE_SCRIPT"
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'release-source']
+        runpy.run_path(sys.argv[0], run_name="__main__")

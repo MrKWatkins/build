@@ -11,28 +11,27 @@ runs:
   using: composite
   steps:
     - name: Validate publication inputs
-      shell: bash
+      shell: python
       env:
         NUGET_USER: ${{ inputs.nuget-user }}
         PACKAGE_DIRECTORY: ${{ inputs.directory }}
       run: |
-        if [[ -z "$NUGET_USER" ]]; then
-          echo 'Provide nuget-user for trusted publishing.' >&2
-          exit 1
-        fi
-        compgen -G "$PACKAGE_DIRECTORY/*.nupkg" > /dev/null || {
-          echo 'No prepared .nupkg files found.' >&2
-          exit 1
-        }
+        import os
+        from pathlib import Path
+        assert os.environ["NUGET_USER"], "Provide nuget-user for trusted publishing."
+        assert list(Path(os.environ["PACKAGE_DIRECTORY"]).glob("*.nupkg")), "No prepared .nupkg files found."
     - name: NuGet login
       id: login
       uses: NuGet/login@v1
       with:
         user: ${{ inputs.nuget-user }}
     - name: Push prepared packages
-      shell: bash
+      shell: python
       env:
-        PUBLISH_SCRIPT: ${{ github.action_path }}/publish.sh
         PACKAGE_DIRECTORY: ${{ inputs.directory }}
         NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
-      run: bash "$PUBLISH_SCRIPT"
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'publish']
+        runpy.run_path(sys.argv[0], run_name="__main__")

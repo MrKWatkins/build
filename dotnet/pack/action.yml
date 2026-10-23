@@ -19,10 +19,13 @@ runs:
   steps:
     - name: Pack existing outputs
       id: pack
-      shell: bash
+      shell: python
       env:
-        PACK_SCRIPT: ${{ github.action_path }}/pack.sh
         BUILD_DIRECTORY: ${{ inputs.directory }}
         VERSION: ${{ inputs.version }}
         PACKAGE_DIRECTORY: ${{ inputs.output }}
-      run: bash "$PACK_SCRIPT"
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'pack']
+        runpy.run_path(sys.argv[0], run_name="__main__")
