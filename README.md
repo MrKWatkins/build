@@ -195,7 +195,7 @@ uv run pytest
 
 Use `uv run pytest --run-dotnet` for the real .NET 10 packaging tests. `uv run python scripts/build.py build-images` builds both Docker images and runs the
 Docker documentation tests; `uv run pytest tests/test_docs.py --run-docker` reruns those tests against prepared images. Ordinary tests need no .NET SDK,
-Docker or publishing credentials. CI also runs actionlint. Dependabot maintains action references. ReportGenerator is pinned centrally in `scripts/build.py`.
+Docker or publishing credentials. Navigation unit tests also use Node, which is provided by GitHub’s runners. CI also runs actionlint. Dependabot maintains action references. ReportGenerator is pinned centrally in `scripts/build.py`.
 
 ## Documentation
 
@@ -230,7 +230,7 @@ Put handwritten pages in `docs/content` and configure the site in `docs/site.jso
 ```
 
 Paths are repository-root-relative. `contentDirectory` defaults to `docs/content`. Guide links are site-root-relative and omit the deployment base. The API section
-uses `/api/`, showing namespace/type navigation and member lists on their type pages. Multiple assemblies can share namespaces. Keep each assembly's XML documentation,
+uses `/api/`, showing namespaces, types and collapsible Constructors, Fields, Properties, Methods, Operators and Events sections. Empty sections and compiler-generated extension containers are omitted from the menu; real nested types remain visible. Multiple assemblies can share namespaces. Keep each assembly's XML documentation,
 PDB and dependencies alongside it. The image supplies matching framework XML documentation for inherited summaries.
 
 Optional `api.introductions` is an array of `{ "text": "Introduction", "link": "/api/introduction" }` entries pointing to handwritten pages under
@@ -269,7 +269,7 @@ rule: correct those comments and select the override explicitly until a release 
 
 ## Documentation images
 
-The Linux amd64 images contain Node 24, VitePress 1.6.4, Vue, Vale and shared styles. The .NET variant adds Sesharp 1.12.0, runtime 10.0.13 and framework XML,
+The Linux amd64 images contain Node 24, VitePress 1.6.4, Vue, Vale and shared styles. The .NET variant adds Sesharp 1.13.0, runtime 10.0.13 and framework XML,
 with no SDK or WASM workload. npm dependencies are locked; Vite is overridden to a compatible patched release. Third-party licences remain in the image.
 
 Build and test locally with Docker and the .NET 10 SDK:

@@ -1,6 +1,13 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-:root { --vp-layout-max-width: 1600px; }
+:root {
+  --vp-layout-max-width: min(1600px, 100vw);
+  --vp-sidebar-width: 360px;
+}
 .VPDoc.has-aside .content-container { max-width: 1000px; }
 .VPDoc:not(.has-aside) .content-container { max-width: 1200px; }
+.VPDoc.has-sidebar > .container > .content { min-width: 0; }
+.VPDocFooter .pager { min-width: 0; overflow-wrap: anywhere; }
 .vp-doc table { display: block; overflow-x: auto; }
+.vp-doc p:has(> a > img) { display: flex; align-items: center; gap: 4px; }
+.vp-doc p > a:has(> img) { min-width: 0; }
 .VPSidebarItem .text { white-space: normal; overflow-wrap: anywhere; }

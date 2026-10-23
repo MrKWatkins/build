@@ -65,7 +65,7 @@ async function prepare(config, options, stage) {
     const generated = path.join(stage, 'generated');
     await run('sesharp', [...assemblies, '--output', generated, '--repository', config.repository, '--source-ref', options['source-ref']]);
     const manifest = JSON.parse(await readFile(path.join(generated, 'navigation.json'), 'utf8'));
-    api = apiNavigation(manifest);
+    api = await apiNavigation(manifest, file => readFile(path.join(generated, file), 'utf8'));
     const destination = path.join(source, 'api');
     await mkdir(destination, { recursive: true });
     for (const file of await files(generated)) {
