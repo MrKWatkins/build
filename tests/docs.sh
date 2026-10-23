@@ -33,6 +33,11 @@ grep -q "$source_ref" "$workspace/artifacts/docs/api/Example/Value-T/Read.html"
 test -f "$workspace/artifacts/docs/api/Example/Helper/index.html"
 test -f "$workspace/artifacts/docs/api/Example/Value-T/Nested-T/index.html"
 test -f "$workspace/docs/content/api/introduction.md"
+mkdir "$workspace/released"
+mv "$workspace/src" "$workspace/released/src"
+build --api-directory released --output artifacts/released
+test -f "$workspace/artifacts/released/api/Example/Value-T/Parse.html"
+mv "$workspace/released/src" "$workspace/src"
 docker run --rm --entrypoint sh "$image" -c 'test ! -d /usr/share/dotnet/sdk && test -z "$(dotnet --list-sdks)" && test ! -e /root/.nuget/packages'
 
 expect_failure() {

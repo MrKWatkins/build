@@ -5,3 +5,16 @@ NuGet
 Sesharp
 VitePress
 Vue
+bool
+char
+int
+math
+nint
+nuint
+sbyte
+seekable
+struct
+uint
+ulong
+ushort
+xor

@@ -9,6 +9,9 @@ inputs:
     default: dev
   source-ref:
     description: Full API source commit SHA (defaults to the checked-out commit)
+  api-directory:
+    description: Repository-root-relative API checkout directory
+    default: .
   output:
     description: Empty repository-root-relative site output directory
     default: artifacts/docs
@@ -30,8 +33,9 @@ runs:
         CONFIG: ${{ inputs.config }}
         VERSION: ${{ inputs.version }}
         SOURCE_REF: ${{ inputs.source-ref }}
+        API_DIRECTORY: ${{ inputs.api-directory }}
         OUTPUT: ${{ inputs.output }}
       run: |
         source_ref=${SOURCE_REF:-$(git rev-parse HEAD)}
-        bash "$DOCS_SCRIPT" build --config "$CONFIG" --version "$VERSION" --source-ref "$source_ref" --output "$OUTPUT"
+        bash "$DOCS_SCRIPT" build --config "$CONFIG" --version "$VERSION" --source-ref "$source_ref" --api-directory "$API_DIRECTORY" --output "$OUTPUT"
         echo "directory=$(realpath "$OUTPUT")" >> "$GITHUB_OUTPUT"

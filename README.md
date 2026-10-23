@@ -63,7 +63,7 @@ The consumer owns the release sequence. Resolve the checked-out commit with `git
 5. Call `release/create` with `version` and the resolved `commit`.
 6. Deploy the exact validated documentation artifact.
 
-Use `docs/build` for the documentation validation gate. Deployment and complete consumer release workflows will be added during the pilot.
+Use `docs/build` for the documentation validation gate and `docs/deploy` for the validated Pages artifact.
 
 | Action           | Inputs                                                                                       | Behaviour                                                                                                                                                                            |
 |------------------|----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -81,7 +81,7 @@ Release creation uses the calling job's GitHub token and needs `contents: write`
 untrusted pull requests. Documentation containers will not receive these credentials.
 
 Publishing packages, creating a release and deploying a site are separate operations. If only deployment fails, retry the retained site artifact or use the
-future docs-only workflow without republishing packages or creating another tag. If a package push partially fails, retry the same package artifacts. An existing
+docs-only workflow without republishing packages or creating another tag. If a package push partially fails, retry the same package artifacts. An existing
 GitHub release is not recreated by `release/create`; skip that step on recovery once it has succeeded. Tags are never moved.
 
 ## Local commands
@@ -115,10 +115,11 @@ new pushes do not cancel an active publication. Manual workflow runs only build 
 Locally, with .NET 10, ShellCheck and actionlint installed:
 
 ```bash
-shellcheck -x -P SCRIPTDIR dotnet/*/*.sh release/create/*.sh scripts/*.sh tests/*.sh docs/scripts/*.sh images/*.sh
+shellcheck -x -P SCRIPTDIR dotnet/*/*.sh release/create/*.sh scripts/*.sh tests/*.sh docs/*/*.sh images/*.sh
 actionlint
 bash tests/test.sh
 bash tests/images.sh
+bash tests/docs-publication.sh
 ```
 
 Dependabot maintains action references. Update the pinned ReportGenerator version in `dotnet/build/build.sh` centrally and validate before merging.
@@ -134,7 +135,7 @@ Dependabot maintains action references. Update the pinned ReportGenerator versio
     version: '1.2.3'
 ```
 
-Inputs are `config` (default `docs/site.json`), `version` (default `dev`), `source-ref` (default the checked-out commit), `output` (default `artifacts/docs`) and
+Inputs are `config` (default `docs/site.json`), `version` (default `dev`), `source-ref` (default the checked-out commit), `api-directory` (default `.`), `output` (default `artifacts/docs`) and
 `image` (default `ghcr.io/mrkwatkins/docs-dotnet:latest`). Output must be empty; upload it as an artifact before publication and retain it for deployment retries.
 This action needs only `contents: read`, Docker and prepared assemblies. It passes no publishing credentials to the container.
 
@@ -177,9 +178,27 @@ The wrapper pulls the selected image and resolves it once to a digest for execut
 Outputs use your UID/GID. Preview listens at `http://localhost:5173/<base>/`; `DOCS_PORT` changes the host port. It uses a prepared copy: restart after source edits.
 The header displays the supplied release version, or an explicit development label when omitted.
 
+## Documentation publishing
+
+Upload `artifacts/docs` with `actions/upload-pages-artifact@v5`, retaining it for deployment retries. A separate deployment job calls `docs/deploy` with the library
+`version`. That job needs `contents: read`, `pages: write`, `id-token: write`, the `github-pages` environment and a shared `github-pages` concurrency group with
+`cancel-in-progress: false`. Both release and docs-only deployments must use that same group. Set the consumer's Pages source to **GitHub Actions**.
+
+`docs/deploy` checks the highest stable `vX.Y.Z` tag immediately before deployment and refuses a different version. Tags mark published library releases; the check
+uses semantic version order and ignores prereleases. This also works for older repositories that published a package and tag without creating a GitHub release.
+
+For docs-only publication, check out handwritten documentation at the selected commit, then call `docs/release-source`. It outputs `version`, `release-tag` and the
+resolved API `commit`. Check out that commit under an ignored directory such as `artifacts/api-source`, build its Release API assemblies with the released version,
+then pass `api-directory: artifacts/api-source` and `source-ref: <resolved API commit>` to `docs/build`. Upload and deploy that validated artifact using the same version.
+This workflow needs no package publication or release-creation step.
+
+The optional `api-ref` input to `docs/release-source` selects an explicit source override for XML comment corrections. It keeps the released version in the header and
+reports both API and handwritten-documentation commits, prominently identifying overrides. Existing releases may have XML comments that fail a newly enabled Vale
+rule: correct those comments and select the override explicitly until a release includes them. No style rules are bypassed for old API documentation.
+
 ## Documentation images
 
-The Linux amd64 images contain Node 24, VitePress 1.6.4, Vue, Vale and shared styles. The .NET variant adds Sesharp 1.11.0, runtime 10.0.13 and framework XML,
+The Linux amd64 images contain Node 24, VitePress 1.6.4, Vue, Vale and shared styles. The .NET variant adds Sesharp 1.12.0, runtime 10.0.13 and framework XML,
 with no SDK or WASM workload. npm dependencies are locked; Vite is overridden to a compatible patched release. Third-party licences remain in the image.
 
 Build and test locally with Docker and the .NET 10 SDK:
@@ -204,6 +223,5 @@ Build and test failures prevent the Publish job from running. Image publication 
 workflows. Registry maintenance can be performed directly in GHCR. Both GHCR packages must be public before `latest` is updated.
 
 Image tags are independent of library versions. Update pinned tools here and merge to `main`; consumers following `latest` need no configuration change.
-Deployment and docs-only reference selection will be proven in the first consumer pilot.
 
 Original project code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE).

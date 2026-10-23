@@ -17,10 +17,10 @@ function requireValue(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-async function repositoryPath(value, name) {
+async function repositoryPath(value, name, directory = root) {
   requireValue(typeof value === 'string' && value.length && !path.isAbsolute(value), `${name} must be repository-root-relative.`);
-  const resolved = await realpath(path.resolve(root, value));
-  requireValue(resolved.startsWith(`${root}${path.sep}`), `${name} must remain inside the repository.`);
+  const resolved = await realpath(path.resolve(directory, value));
+  requireValue(resolved.startsWith(`${directory}${path.sep}`), `${name} must remain inside ${directory}.`);
   return resolved;
 }
 
@@ -60,7 +60,8 @@ async function prepare(config, options, stage) {
     requireValue(config.api.generator === 'sesharp', 'The supported API generator is sesharp.');
     requireValue(Array.isArray(config.api.assemblies) && config.api.assemblies.length, 'api.assemblies must contain Release assembly paths.');
     requireValue(/^[a-f\d]{40}$/i.test(options['source-ref'] ?? ''), '--source-ref must be the full API source commit SHA.');
-    const assemblies = await Promise.all(config.api.assemblies.map(value => repositoryPath(value, 'api.assemblies')));
+    const apiDirectory = options['api-directory'] === '.' ? root : await repositoryPath(options['api-directory'], 'api-directory');
+    const assemblies = await Promise.all(config.api.assemblies.map(value => repositoryPath(value, 'api.assemblies', apiDirectory)));
     const generated = path.join(stage, 'generated');
     await run('sesharp', [...assemblies, '--output', generated, '--repository', config.repository, '--source-ref', options['source-ref']]);
     const manifest = JSON.parse(await readFile(path.join(generated, 'navigation.json'), 'utf8'));
@@ -122,6 +123,7 @@ try {
       version: { type: 'string', default: 'dev' },
       output: { type: 'string', default: 'artifacts/docs' },
       'source-ref': { type: 'string' },
+      'api-directory': { type: 'string', default: '.' },
       port: { type: 'string', default: '5173' }
     }
   });

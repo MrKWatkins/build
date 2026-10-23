@@ -34,7 +34,7 @@ export function apiNavigation(manifest) {
         return {
           text: entry.title,
           link: `/api/${entry.path.replace(/\.md$/, '').replace(/(^|\/)index$/, '$1')}`,
-          ...(items.length ? { collapsed: true, items } : {})
+          ...(items.length ? { collapsed: entry.kind !== 'namespace', items } : {})
         };
       });
   }

@@ -19,13 +19,15 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - name: Check shell scripts
-        run: shellcheck -x -P SCRIPTDIR dotnet/*/*.sh release/create/*.sh scripts/*.sh tests/*.sh docs/scripts/*.sh images/*.sh
+        run: shellcheck -x -P SCRIPTDIR dotnet/*/*.sh release/create/*.sh scripts/*.sh tests/*.sh docs/*/*.sh images/*.sh
       - name: Check workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -color
       - name: Test build and publication boundaries
         run: bash tests/test.sh
       - name: Test image publication boundaries
         run: bash tests/images.sh
+      - name: Test documentation publication boundaries
+        run: bash tests/docs-publication.sh
       - name: Build and test documentation images
         env:
           IMAGE_VERSION: sha-${{ github.sha }}

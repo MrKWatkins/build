@@ -1,0 +1,27 @@
+name: Deploy documentation
+description: Deploy the validated Pages artifact only if it describes the latest release.
+inputs:
+  version:
+    description: Released library version displayed by the site
+    required: true
+  artifact-name:
+    description: Uploaded Pages artifact name
+    default: github-pages
+outputs:
+  page-url:
+    description: Deployed site URL
+    value: ${{ steps.deploy.outputs.page_url }}
+runs:
+  using: composite
+  steps:
+    - name: Check release freshness
+      shell: bash
+      env:
+        FRESHNESS_SCRIPT: ${{ github.action_path }}/freshness.sh
+        VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: bash "$FRESHNESS_SCRIPT"
+    - id: deploy
+      uses: actions/deploy-pages@v5
+      with:
+        artifact_name: ${{ inputs.artifact-name }}
