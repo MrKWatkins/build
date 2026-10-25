@@ -8,7 +8,7 @@ export function fitSidebar() {
     const nav = document.querySelector('#VPSidebarNav');
     if (!nav) return root.style.removeProperty('--build-sidebar-content-width');
 
-    // Measure every label, including collapsed sections, at its natural width.
+    // Measure mounted labels without wrapping; newly expanded groups trigger another pass.
     const copy = nav.cloneNode(true);
     copy.removeAttribute('id');
     copy.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));

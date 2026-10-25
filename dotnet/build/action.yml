@@ -1,6 +1,9 @@
 name: .NET Build
 description: Restore, check formatting, build and test with Microsoft Testing Platform.
 inputs:
+  prepare:
+    description: Optional repository-relative Python preparation script, run after SDK setup.
+    default: ''
   directory:
     description: Directory containing the solution and its test configuration.
     default: src
@@ -30,6 +33,7 @@ runs:
       env:
         BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
         BUILD_DIRECTORY: ${{ inputs.directory }}
+        PREPARE_SCRIPT: ${{ inputs.prepare }}
         VERSION: ${{ inputs.version }}
         TEST_FILTER: ${{ inputs.test-filter }}
         COVERAGE: ${{ inputs.coverage }}

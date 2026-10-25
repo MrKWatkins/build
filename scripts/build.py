@@ -70,15 +70,39 @@ def boolean(name, default=True):
     return value == "true"
 
 
+def prepare():
+    if name := os.environ.get("PREPARE_SCRIPT"):
+        root = Path.cwd().resolve()
+        script = Path(name).resolve(strict=True)
+        require(
+            not Path(name).is_absolute()
+            and script.is_relative_to(root)
+            and script.is_file()
+            and script.suffix == ".py",
+            "PREPARE_SCRIPT must be a repository-relative Python file.",
+        )
+        run(sys.executable, script, cwd=root)
+
+
 def build():
     directory = Path(os.environ.get("BUILD_DIRECTORY", "src")).resolve(strict=True)
     coverage = boolean("COVERAGE")
     version_args = [f"-p:Version={version()}"] if os.environ.get("VERSION") else []
+    prepare()
     run("dotnet", "--version", cwd=directory)
     run("dotnet", "restore", *version_args, cwd=directory)
     if run("dotnet", "format", "--no-restore", "--verify-no-changes", cwd=directory, check=False).returncode:
         print("Warning: format verification failed; continuing as configured.", file=sys.stderr)
-    run("dotnet", "build", "--no-restore", "--configuration", "Release", *version_args, cwd=directory)
+    run(
+        "dotnet",
+        "build",
+        "--no-restore",
+        "--configuration",
+        "Release",
+        "-p:CopyLocalLockFileAssemblies=true",
+        *version_args,
+        cwd=directory,
+    )
     test_args = ["--no-restore", "--no-build", "--configuration", "Release"]
     if expression := os.environ.get("TEST_FILTER"):
         test_args += ["--filter", expression]
@@ -299,6 +323,7 @@ def build_api():
             "--configuration",
             "Release",
             f"-p:Version={release_version}",
+            "-p:CopyLocalLockFileAssemblies=true",
             "-p:NuGetAudit=false",
         )
 
@@ -492,6 +517,7 @@ def preview_docs():
 def main():
     commands = {
         "build": build,
+        "prepare": prepare,
         "pack": pack,
         "build-and-pack": build_and_pack,
         "publish": publish,

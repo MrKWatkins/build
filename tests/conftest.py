@@ -28,6 +28,7 @@ def isolated_environment(monkeypatch):
         "GITHUB_OUTPUT",
         "GITHUB_STEP_SUMMARY",
         "BUILD_DIRECTORY",
+        "PREPARE_SCRIPT",
         "PACKAGE_DIRECTORY",
         "COVERAGE",
         "COVERAGE_DIRECTORY",

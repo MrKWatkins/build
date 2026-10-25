@@ -24,6 +24,10 @@ Test projects need the MTP runner and, when coverage is enabled, the
 `Microsoft.Testing.Extensions.CodeCoverage` extension. The optional `test-filter`
 input uses NUnit/MSTest filter expressions.
 
+For repositories with additional build prerequisites, set `prepare: scripts/prepare.py` on `dotnet/project`.
+The optional repository-relative Python script runs with Node 24 available, after SDK setup and before restore/build, including docs-only releases. It can install workloads,
+test a web app and prepare static documentation assets. It runs once per job and inherits `VERSION` when a release version is selected.
+
 ## Project workflows
 
 For the standard `src` and `docs/site.json` layout, both workflows call `dotnet/project`. The build workflow validates everything without publishing:
@@ -38,6 +42,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
+    name: Build and Test
     runs-on: ubuntu-latest
     steps:
       - uses: MrKWatkins/build/dotnet/project@main
@@ -72,6 +77,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
+    name: Release
     runs-on: ubuntu-latest
     environment: github-pages
     permissions:
@@ -231,7 +237,15 @@ Put handwritten pages in `docs/content` and configure the site in `docs/site.jso
 
 Paths are repository-root-relative. `contentDirectory` defaults to `docs/content`. Guide links are site-root-relative and omit the deployment base. The API section
 uses `/api/`, showing namespaces, types and collapsible Constructors, Fields, Properties, Methods, Operators and Events sections. Empty sections and compiler-generated extension containers are omitted from the menu; real nested types remain visible. Multiple assemblies can share namespaces. Keep each assembly's XML documentation,
-PDB and dependencies alongside it. The image supplies matching framework XML documentation for inherited summaries.
+PDB and dependencies alongside it. The shared build copies runtime dependencies beside API assemblies so documentation needs no NuGet cache in the container.
+The image supplies matching framework XML documentation for inherited summaries. Inactive API branches render on demand, and shared metadata is emitted once
+rather than repeated in every HTML page.
+
+Optional `nav` entries (`{ "text": "Converter", "link": "/converter" }`) replace the default top menu. Include Guide and API entries in the desired order.
+
+Optional `publicDirectory` names a prepared static asset directory, copied unchanged into the site root. Use it for embedded applications and their runtime files;
+prepare it before the documentation build. Symlinks and paths outside the repository are rejected. Optional `head` entries use VitePress's standard array format,
+for example to select a favicon. URLs in these entries must include the deployment base where applicable.
 
 Optional `api.introductions` is an array of `{ "text": "Introduction", "link": "/api/introduction" }` entries pointing to handwritten pages under
 `docs/content/api`. Generation uses temporary storage and refuses to overwrite handwritten pages. Static files live alongside Markdown; VitePress processes relative
@@ -269,7 +283,7 @@ rule: correct those comments and select the override explicitly until a release 
 
 ## Documentation images
 
-The Linux amd64 images contain Node 24, VitePress 1.6.4, Vue, Vale and shared styles. The .NET variant adds Sesharp 1.14.0, runtime 10.0.13 and framework XML,
+The Linux amd64 images contain Node 24, VitePress 1.6.4, Vue, Vale and shared styles. The .NET variant adds Sesharp 1.15.0, runtime 10.0.13 and framework XML,
 with no SDK or WASM workload. npm dependencies are locked; Vite is overridden to a compatible patched release. Third-party licences remain in the image.
 
 Build and test locally with Docker and the .NET 10 SDK:

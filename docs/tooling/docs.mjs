@@ -79,7 +79,7 @@ async function prepare(config, options, stage) {
   }
   const introductions = config.api?.introductions ? navigation(config.api.introductions, 'api.introductions') : [];
   const theme = {
-    nav: [{ text: 'Guide', link: guide[0].link }, ...(api.length ? [{ text: 'API', link: '/api/' }] : [])],
+    nav: config.nav ? navigation(config.nav, 'nav') : [{ text: 'Guide', link: guide[0].link }, ...(api.length ? [{ text: 'API', link: '/api/' }] : [])],
     sidebar: { '/api/': [...introductions, { text: 'API', link: '/api/', items: api }], '/': guide },
     search: { provider: 'local' },
     socialLinks: [{ icon: 'github', link: config.repository }],
@@ -87,13 +87,23 @@ async function prepare(config, options, stage) {
   };
   const settings = {
     lang: 'en-GB', title: `${config.title} ${options.version === 'dev' ? '(development)' : `v${options.version}`}`,
-    description: config.description ?? '', base, srcDir: source,
+    description: config.description ?? '', head: config.head ?? [], base, srcDir: source,
     outDir: path.join(stage, 'dist'), cacheDir: path.join(stage, 'cache'),
-    ignoreDeadLinks: false, themeConfig: theme
+    ignoreDeadLinks: false, metaChunk: true, themeConfig: theme
   };
+  if (config.publicDirectory) {
+    const assets = await repositoryPath(config.publicDirectory, 'publicDirectory');
+    await files(assets);
+    const publicDirectory = path.join(stage, 'public');
+    await cp(assets, publicDirectory, { recursive: true });
+    settings.vite = { publicDir: publicDirectory };
+  }
   await mkdir(path.join(stage, '.vitepress', 'theme'), { recursive: true });
   await symlink(path.join(tooling, 'node_modules'), path.join(stage, 'node_modules'));
-  await writeFile(path.join(stage, '.vitepress', 'config.mjs'), `export default ${JSON.stringify(settings, null, 2)};\n`);
+  await writeFile(path.join(stage, '.vitepress', 'config.mjs'),
+    `import { lazySidebar } from ${JSON.stringify(path.join(tooling, 'sidebar.mjs'))};\n` +
+    `const config = ${JSON.stringify(settings, null, 2)};\n` +
+    'config.vite = { ...config.vite, plugins: [lazySidebar()] };\nexport default config;\n');
   await cp(path.join(shared, 'theme'), path.join(stage, '.vitepress', 'theme'), { recursive: true });
   await lint(source, config, stage);
   return { base, source, content };

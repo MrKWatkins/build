@@ -70,7 +70,7 @@ export async function apiNavigation(manifest, readPage) {
         return {
           text: escapeText(entry.title),
           link: link(entry),
-          ...(items.length ? { collapsed: entry.kind !== 'namespace', items } : {})
+          ...(items.length ? { collapsed: true, items } : {})
         };
       });
   }

@@ -68,6 +68,37 @@ def test_project_defaults_never_publish(project):
     assert "Deploy documentation" not in names
 
 
+def test_project_prepares_assets_for_all_build_modes(project):
+    for packages, docs in [("false", "false"), ("true", "true"), ("true", "false"), ("false", "true")]:
+        steps = selected_steps(
+            project, prepare="scripts/prepare.py", **{"publish-packages": packages, "publish-docs": docs}
+        )
+        names = [step.get("name") for step in steps]
+        assert (
+            next(step for step in steps if step.get("name") == "Set up preparation Node")["with"]["node-version"]
+            == "24"
+        )
+        if packages == "true":
+            assert (
+                next(step for step in steps if step.get("name") == "Build, test and pack .NET")["with"]["prepare"]
+                == "${{ inputs.prepare }}"
+            )
+        elif docs == "true":
+            assert (
+                names.index("Install API build SDK")
+                < names.index("Prepare project assets")
+                < names.index("Build released API assemblies")
+            )
+            hook = next(step for step in steps if step.get("name") == "Prepare project assets")
+            assert hook["env"]["VERSION"] == "${{ steps.api.outputs.version }}"
+        else:
+            assert (
+                next(step for step in steps if step.get("name") == "Build and test .NET")["with"]["prepare"]
+                == "${{ inputs.prepare }}"
+            )
+        assert ("Prepare project assets" in names) == (packages == "false" and docs == "true")
+
+
 def test_package_release_without_site_skips_documentation(project):
     steps = selected_steps(project, docs="false", **{"publish-packages": "true"})
     names = [step.get("name") for step in steps]

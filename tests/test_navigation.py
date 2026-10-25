@@ -129,7 +129,7 @@ def test_generic_and_real_nested_types_are_preserved_and_html_escaped(entries):
     entries[1]["title"] = "Widget<T>"
     entries += [entry("T:nested", "Example/Widget/Nested/index.md", "Widget<T>.Nested<U>", "type")]
     menu = navigation(entries)
-    assert menu[0]["collapsed"] is False
+    assert menu[0]["collapsed"] is True
     assert menu[0]["items"][0] == {
         "text": "Widget&lt;T&gt;",
         "link": "/api/Example/Widget/",

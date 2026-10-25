@@ -46,6 +46,7 @@ def test_api_builds_each_project_once_with_released_version(api, runner):
             "--configuration",
             "Release",
             "-p:Version=1.7.0",
+            "-p:CopyLocalLockFileAssemblies=true",
             "-p:NuGetAudit=false",
         )
         for name in ("One", "Two")

@@ -1,6 +1,9 @@
 name: .NET Build and Pack
 description: Build and test once, then package the validated Release outputs.
 inputs:
+  prepare:
+    description: Optional repository-relative Python preparation script, run after SDK setup.
+    default: ''
   version:
     description: Stable release version without a v prefix.
     required: true
@@ -37,6 +40,7 @@ runs:
       shell: python
       env:
         BUILD_DIRECTORY: ${{ inputs.directory }}
+        PREPARE_SCRIPT: ${{ inputs.prepare }}
         PACKAGE_DIRECTORY: ${{ inputs.output }}
         VERSION: ${{ inputs.version }}
         TEST_FILTER: ${{ inputs.test-filter }}

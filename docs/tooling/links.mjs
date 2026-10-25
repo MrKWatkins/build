@@ -16,17 +16,26 @@ export async function files(directory) {
 
 export async function validateLinks(directory, base) {
   const documents = new Map();
+  const strings = new Map();
+  function intern(value) {
+    if (!strings.has(value)) {
+      // Parser slices can retain an entire HTML page. Copy each distinct value once.
+      const copy = Buffer.from(value).toString();
+      strings.set(copy, copy);
+    }
+    return strings.get(value);
+  }
   for (const file of await files(directory)) {
     if (!file.endsWith('.html')) continue;
-    const document = { ids: new Set(), links: [] };
+    const document = { ids: new Set(), links: new Set() };
     function visit(node) {
       const attributes = Object.fromEntries((node.attrs ?? []).map(a => [a.name, a.value]));
-      if (attributes.id) document.ids.add(attributes.id);
+      if (attributes.id) document.ids.add(intern(attributes.id));
       for (const attribute of ['href', 'src', 'poster']) {
-        if (attributes[attribute]) document.links.push(attributes[attribute]);
+        if (attributes[attribute]) document.links.add(intern(attributes[attribute]));
       }
       if (attributes.srcset) {
-        document.links.push(...attributes.srcset.split(',').map(item => item.trim().split(/\s+/)[0]));
+        for (const item of attributes.srcset.split(',')) document.links.add(intern(item.trim().split(/\s+/)[0]));
       }
       for (const child of node.childNodes ?? []) visit(child);
     }
@@ -34,6 +43,12 @@ export async function validateLinks(directory, base) {
     documents.set(file, document);
   }
   const errors = new Set();
+  // Every page repeats the navigation links. The built site is immutable here.
+  const statuses = new Map();
+  async function status(file) {
+    if (!statuses.has(file)) statuses.set(file, await stat(file).catch(() => null));
+    return statuses.get(file);
+  }
   for (const [file, document] of documents) {
     const relative = path.relative(directory, file).split(path.sep).join('/');
     for (const link of document.links) {
@@ -50,8 +65,8 @@ export async function validateLinks(directory, base) {
         continue;
       }
       if (url.pathname.endsWith('/')) target = path.join(target, 'index.html');
-      else if (!(await stat(target).catch(() => null)) && !path.extname(target)) target += '.html';
-      if (!(await stat(target).catch(() => null))?.isFile()) {
+      else if (!(await status(target)) && !path.extname(target)) target += '.html';
+      if (!(await status(target))?.isFile()) {
         errors.add(`${relative}: missing target ${link}`);
       } else if (url.hash && documents.has(target) &&
           !documents.get(target).ids.has(decodeURIComponent(url.hash.slice(1)))) {

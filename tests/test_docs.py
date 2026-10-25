@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Exercise the prepared documentation images without publishing anything."""
 
+import json
 import os
 import shutil
 import time
@@ -122,6 +123,48 @@ def test_site_uses_api_assemblies_from_separate_checkout(workspace, image):
     assert not (workspace / "src").exists()
 
 
+def test_public_assets_include_embedded_app_and_runtime(workspace, image):
+    public = workspace / "artifacts/public assets"
+    app = public / "converter"
+    app.mkdir(parents=True)
+    (app / "index.html").write_text(
+        '<!doctype html><html><body><h1 id="app">Converter</h1><script src="app.js"></script><a href="engine.wasm">Runtime</a></body></html>'
+    )
+    (app / "app.js").write_text("document.title = 'Converter';\n")
+    (app / "engine.wasm").write_bytes(b"\x00asm\x01\x00\x00\x00")
+    config = workspace / "docs/site.json"
+    settings = json.loads(config.read_text())
+    settings["publicDirectory"] = "artifacts/public assets"
+    config.write_text(json.dumps(settings))
+    page = workspace / "docs/content/index.md"
+    page.write_text(page.read_text() + '\n<iframe src="./converter/index.html" title="Converter"></iframe>\n')
+    build_site(workspace, image)
+    output = workspace / "artifacts/docs"
+    assert 'src="./converter/index.html"' in (output / "index.html").read_text()
+    for name in ("index.html", "app.js", "engine.wasm"):
+        assert (output / "converter" / name).read_bytes() == (app / name).read_bytes()
+
+
+@pytest.mark.parametrize("escape", ["absolute", "parent", "symlink"])
+def test_public_assets_reject_path_escapes(workspace, image, escape):
+    assets = workspace / "assets"
+    assets.mkdir()
+    (assets / "escape").symlink_to(workspace / "src", target_is_directory=True)
+    config = workspace / "docs/site.json"
+    settings = json.loads(config.read_text())
+    settings["publicDirectory"] = {"absolute": "/etc", "parent": "..", "symlink": "assets"}[escape]
+    config.write_text(json.dumps(settings))
+    result = build_site(workspace, image, check=False)
+    assert result.returncode != 0
+    expected = {
+        "absolute": "repository-root-relative",
+        "parent": "must remain inside",
+        "symlink": "Symbolic links are not supported",
+    }[escape]
+    assert expected in result.stdout
+    assert not (workspace / "artifacts/docs/index.html").exists()
+
+
 def test_dotnet_image_has_runtime_without_sdk_or_package_cache(image):
     assert checked("docker", "run", "--rm", "--entrypoint", "dotnet", image, "--list-sdks") == ""
     checked(
@@ -136,6 +179,38 @@ def test_dotnet_image_has_runtime_without_sdk_or_package_cache(image):
         "for (const path of ['/usr/share/dotnet/sdk', '/root/.nuget/packages']) "
         "assert.equal(fs.existsSync(path), false, path);",
     )
+
+
+def test_repeated_navigation_fits_bounded_heap(image):
+    script = """
+        import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+        import { validateLinks } from '/opt/docs/tooling/links.mjs';
+        const directory = await mkdtemp('/tmp/repeated-navigation-');
+        try {
+          await writeFile(directory + '/target.html', '<h1 id="found">Target</h1>');
+          const links = Array.from({length: 500}, (_, i) =>
+            '<a href="target.html?padding=' + 'x'.repeat(1400) + i + '#found">Link</a>').join('');
+          for (let i = 0; i < 40; i++) {
+            await writeFile(directory + '/' + i + '.html', '<nav>' + links + '</nav>');
+          }
+          await validateLinks(directory, '/example/');
+        } finally {
+          await rm(directory, {recursive: true, force: true});
+        }
+    """
+    output = checked(
+        "docker",
+        "run",
+        "--rm",
+        "--entrypoint",
+        "node",
+        image,
+        "--max-old-space-size=128",
+        "--input-type=module",
+        "-e",
+        script,
+    )
+    assert "Validated local links, assets and anchors in 41 HTML pages." in output
 
 
 @pytest.mark.parametrize(

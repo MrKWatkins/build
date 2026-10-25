@@ -1,6 +1,9 @@
 name: .NET project
 description: Build, test and validate documentation, then optionally publish packages and Pages in the calling job.
 inputs:
+  prepare:
+    description: Optional repository-relative Python script to prepare workloads, web builds or documentation assets.
+    default: ''
   version:
     description: Optional package version; defaults to the next minor release. Docs-only builds use the released version.
     default: ''
@@ -60,10 +63,16 @@ runs:
         import os, subprocess
         with open(os.environ["GITHUB_OUTPUT"], "a") as file:
             file.write("commit=" + subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() + "\n")
+    - name: Set up preparation Node
+      if: inputs.prepare != ''
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24'
     - name: Build and test .NET
       if: ${{ inputs.publish-packages != 'true' && inputs.publish-docs != 'true' }}
       uses: MrKWatkins/build/dotnet/build@main
       with:
+        prepare: ${{ inputs.prepare }}
         directory: ${{ inputs.directory }}
         dotnet-version: ${{ inputs.dotnet-version }}
         coverage: ${{ inputs.coverage }}
@@ -79,6 +88,7 @@ runs:
       if: inputs.publish-packages == 'true'
       uses: MrKWatkins/build/dotnet/build-and-pack@main
       with:
+        prepare: ${{ inputs.prepare }}
         version: ${{ steps.version.outputs.version }}
         directory: ${{ inputs.directory }}
         dotnet-version: ${{ inputs.dotnet-version }}
@@ -102,6 +112,17 @@ runs:
       uses: actions/setup-dotnet@v6
       with:
         dotnet-version: ${{ inputs.dotnet-version }}
+    - name: Prepare project assets
+      if: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' && inputs.prepare != '' }}
+      shell: python
+      env:
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+        PREPARE_SCRIPT: ${{ inputs.prepare }}
+        VERSION: ${{ steps.api.outputs.version }}
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ["BUILD_SCRIPT"], 'prepare']
+        runpy.run_path(sys.argv[0], run_name="__main__")
     - name: Build released API assemblies
       if: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' }}
       uses: MrKWatkins/build/docs/build-api@main

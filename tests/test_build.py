@@ -24,13 +24,53 @@ def test_build_preserves_mtp_filter_and_version(workspace, monkeypatch, runner):
     build.build()
     assert runner.commands("dotnet", "restore") == [("dotnet", "restore", "-p:Version=1.2.3")]
     assert runner.commands("dotnet", "build") == [
-        ("dotnet", "build", "--no-restore", "--configuration", "Release", "-p:Version=1.2.3")
+        (
+            "dotnet",
+            "build",
+            "--no-restore",
+            "--configuration",
+            "Release",
+            "-p:CopyLocalLockFileAssemblies=true",
+            "-p:Version=1.2.3",
+        )
     ]
     assert runner.commands("dotnet", "test") == [
         ("dotnet", "test", "--no-restore", "--no-build", "--configuration", "Release", "--filter", expression)
     ]
     assert not runner.commands("dotnet", "tool")
     assert all(kwargs["cwd"] == workspace / "source with spaces" for _, kwargs in runner.calls)
+
+
+def test_preparation_runs_before_restore(workspace, monkeypatch, runner):
+    script = workspace / "prepare assets.py"
+    script.write_text("# Project-specific asset preparation.\n")
+    monkeypatch.setenv("PREPARE_SCRIPT", script.name)
+    build.build()
+    assert runner.calls[0][0] == (build.sys.executable, str(script))
+    assert runner.calls[0][1]["cwd"] == workspace
+    assert runner.commands("dotnet", "restore")
+
+
+def test_preparation_failure_stops_build(workspace, monkeypatch, runner):
+    (workspace / "prepare.py").write_text("raise RuntimeError('asset build failed')\n")
+    monkeypatch.setenv("PREPARE_SCRIPT", "prepare.py")
+    runner.handler = lambda args, kwargs: (9, "")
+    with pytest.raises(subprocess.CalledProcessError) as failure:
+        build.build()
+    assert failure.value.returncode == 9
+    assert not runner.commands("dotnet", "restore")
+
+
+@pytest.mark.parametrize("name", ["../outside.py", "absolute", "prepare.sh", "symlink.py"])
+def test_preparation_rejects_invalid_paths(workspace, monkeypatch, runner, name):
+    outside = workspace.parent / "outside.py"
+    outside.write_text("# Outside the project.\n")
+    (workspace / "prepare.sh").touch()
+    (workspace / "symlink.py").symlink_to(outside)
+    monkeypatch.setenv("PREPARE_SCRIPT", str(outside) if name == "absolute" else name)
+    with pytest.raises(ValueError, match="repository-relative Python"):
+        build.prepare()
+    assert not runner.calls
 
 
 @pytest.mark.parametrize("test_exit,report_exit,expected", [(7, 9, 7), (7, 0, 7), (0, 9, 9)])
