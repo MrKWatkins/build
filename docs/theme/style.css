@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 :root {
   --vp-layout-max-width: min(1600px, 100vw);
-  --vp-sidebar-width: 360px;
+  --vp-sidebar-width: clamp(360px, var(--build-sidebar-content-width, 360px), max(360px, 45vw));
 }
 .VPDoc.has-aside .content-container { max-width: 1000px; }
 .VPDoc:not(.has-aside) .content-container { max-width: 1200px; }
