@@ -283,7 +283,7 @@ rule: correct those comments and select the override explicitly until a release 
 
 ## Documentation images
 
-The Linux amd64 images contain Node 24, VitePress 1.6.4, Vue, Vale and shared styles. The .NET variant adds Sesharp 1.15.0, runtime 10.0.13 and framework XML,
+The Linux amd64 images contain Node 24, VitePress 1.6.4, Vue, Vale and shared styles. The .NET variant adds Sesharp 1.16.0, runtime 10.0.13 and framework XML,
 with no SDK or WASM workload. npm dependencies are locked; Vite is overridden to a compatible patched release. Third-party licences remain in the image.
 
 Build and test locally with Docker and the .NET 10 SDK:
