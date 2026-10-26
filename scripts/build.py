@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 from urllib.parse import quote
 
@@ -179,6 +180,130 @@ def pack():
     )
     require(any(destination.glob("*.nupkg")), "Pack produced no NuGet packages.")
     emit(directory=destination)
+
+
+def python_metadata():
+    directory = Path(os.environ.get("BUILD_DIRECTORY", ".")).resolve(strict=True)
+    with (directory / "pyproject.toml").open("rb") as file:
+        project = tomllib.load(file)["project"]
+    return directory, project
+
+
+def python_pack():
+    directory, _ = python_metadata()
+    destination = Path(os.environ.get("PACKAGE_DIRECTORY", "artifacts/packages")).resolve()
+    destination.mkdir(parents=True, exist_ok=True)
+    require(not any(destination.iterdir()), "Package output directory must be empty; use a fresh directory.")
+    environment = dict(os.environ)
+    if environment.get("VERSION"):
+        _, project = python_metadata()
+        require("version" in project.get("dynamic", []), "Release packaging requires a dynamic project version.")
+        environment["SETUPTOOLS_SCM_PRETEND_VERSION"] = version()
+    run("uv", "build", "--no-sources", "--out-dir", destination, cwd=directory, env=environment)
+    require(
+        list(destination.glob("*.whl")) and list(destination.glob("*.tar.gz")),
+        "Expected a wheel and source distribution.",
+    )
+    emit(directory=destination)
+
+
+def python_build():
+    directory, _ = python_metadata()
+    run("uv", "sync", "--locked", cwd=directory)
+    for args in (("ruff", "check"), ("ruff", "format", "--check"), ("ty", "check")):
+        run("uv", "run", "--frozen", *args, cwd=directory)
+    coverage = boolean("COVERAGE")
+    destination = Path(os.environ.get("TEST_RESULTS_DIRECTORY", "artifacts/test-results")).resolve()
+    with tempfile.TemporaryDirectory() as temporary:
+        raw = Path(temporary)
+        test_args = ["uv", "run", "--frozen"]
+        if coverage:
+            test_args += ["coverage", "run", "--branch", "--source=" + os.environ.get("COVERAGE_SOURCE", "src"), "--m"]
+        test_args += ["pytest", "--junitxml=" + str(raw / "tests.xml")]
+        test = run(*test_args, cwd=directory, check=False, env={**os.environ, "COVERAGE_FILE": str(raw / ".coverage")})
+        try:
+            report_args = ["--tests", str(raw / "tests.xml"), "--test-directory", destination]
+            if coverage:
+                exported = run(
+                    "uv",
+                    "run",
+                    "--frozen",
+                    "coverage",
+                    "xml",
+                    "-o",
+                    raw / "coverage.xml",
+                    cwd=directory,
+                    env={**os.environ, "COVERAGE_FILE": str(raw / ".coverage")},
+                    check=False,
+                )
+                report_args += [
+                    "--coverage",
+                    str(raw / "coverage.xml"),
+                    "--coverage-directory",
+                    Path(os.environ.get("COVERAGE_DIRECTORY", "artifacts/coverage")).resolve(),
+                    "--assembly-filters=" + os.environ.get("COVERAGE_ASSEMBLY_FILTERS", "+*"),
+                    "--file-filters=" + os.environ.get("COVERAGE_FILE_FILTERS", "+*"),
+                ]
+            run(sys.executable, ROOT / "scripts/reports.py", *report_args)
+            if coverage:
+                exported.check_returncode()
+        finally:
+            try:
+                shutil.copytree(raw, destination / "raw" / raw.name)
+            finally:
+                test.check_returncode()
+    python_pack()
+
+
+def python_api():
+    source_ref = os.environ.get("SOURCE_REF") or output("git", "rev-parse", "HEAD")
+    run(
+        "uv",
+        "run",
+        "--script",
+        ROOT / "docs/python-api/generate.py",
+        "--config",
+        os.environ.get("DOCS_CONFIG", "docs/site.json"),
+        "--source-root",
+        os.environ.get("API_DIRECTORY", "."),
+        "--source-ref",
+        commit(source_ref),
+    )
+
+
+def python_latest():
+    # Resolve remote tags so the deployment check sees releases created later in this same job.
+    tags = output("git", "ls-remote", "--tags", "origin")
+    matches = re.findall(r"refs/tags/v" + VERSION_PATTERN + r"(?:\^\{\})?$", tags, flags=re.MULTILINE)
+    return max((tuple(map(int, match)) for match in matches), default=None)
+
+
+def python_release_source():
+    latest = python_latest()
+    previous = ".".join(map(str, latest)) if latest else "0.0.0"
+    if boolean("PUBLISH_PACKAGES", False):
+        major, minor, _ = map(int, previous.split("."))
+        resolved = version(os.environ.get("VERSION") or f"{major}.{minor + 1}.0")
+        source_ref = "HEAD"
+    else:
+        resolved = previous
+        source_ref = os.environ.get("API_REF") or ("v" + previous if latest else "HEAD")
+    sha = commit(output("git", "rev-parse", "--verify", "--end-of-options", source_ref + "^{commit}"))
+    summary(f"Python package version: **{resolved}**\n\nAPI source commit: `{sha}`")
+    emit(version=resolved, commit=sha)
+
+
+def python_freshness():
+    latest = python_latest()
+    expected = ".".join(map(str, latest)) if latest else "0.0.0"
+    require(version() == expected, f"Refusing to deploy {version()}: the latest release is {expected}.")
+
+
+def python_publish():
+    directory = Path(os.environ.get("PACKAGE_DIRECTORY", "artifacts/packages")).resolve(strict=True)
+    packages = sorted([*directory.glob("*.whl"), *directory.glob("*.tar.gz")])
+    require(packages, "No prepared Python distributions found.")
+    run("uv", "publish", "--trusted-publishing", "always", *packages)
 
 
 def build_and_pack():
@@ -524,6 +649,12 @@ def preview_docs():
 def main():
     commands = {
         "build": build,
+        "python-build": python_build,
+        "python-pack": python_pack,
+        "python-api": python_api,
+        "python-release-source": python_release_source,
+        "python-freshness": python_freshness,
+        "python-publish": python_publish,
         "prepare": prepare,
         "pack": pack,
         "build-and-pack": build_and_pack,

@@ -1,0 +1,49 @@
+name: Python Build
+description: Sync locked dependencies, lint, type-check, test, report and build distributions with uv.
+inputs:
+  python-version:
+    description: Python version used by uv.
+    default: '3.14'
+  dotnet-version:
+    description: Optional .NET SDK for Python packages that use pythonnet.
+    default: ''
+  version:
+    description: Optional release version; applied only to a temporary package source copy.
+    default: ''
+  coverage:
+    description: Collect branch coverage and generate an informational summary.
+    default: 'true'
+  coverage-source:
+    description: Comma-separated coverage.py source directories or packages.
+    default: src
+  coverage-package-filters:
+    description: Semicolon-separated +include/-exclude package globs.
+    default: +*
+  coverage-file-filters:
+    description: Semicolon-separated +include/-exclude source path globs.
+    default: +*
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v10.3.2
+      with:
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true
+    - uses: actions/setup-dotnet@v6
+      if: inputs.dotnet-version != ''
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+    - name: Build and test Python
+      shell: python
+      env:
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+        BUILD_DIRECTORY: .
+        VERSION: ${{ inputs.version }}
+        COVERAGE: ${{ inputs.coverage }}
+        COVERAGE_SOURCE: ${{ inputs.coverage-source }}
+        COVERAGE_ASSEMBLY_FILTERS: ${{ inputs.coverage-package-filters }}
+        COVERAGE_FILE_FILTERS: ${{ inputs.coverage-file-filters }}
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ['BUILD_SCRIPT'], 'python-build']
+        runpy.run_path(sys.argv[0], run_name='__main__')

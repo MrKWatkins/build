@@ -35,6 +35,8 @@ def isolated_environment(monkeypatch):
         "TEST_FILTER",
         "COVERAGE_ASSEMBLY_FILTERS",
         "COVERAGE_FILE_FILTERS",
+        "COVERAGE_SOURCE",
+        "PUBLISH_PACKAGES",
         "TEST_REPORT",
         "TEST_RESULTS_DIRECTORY",
         "API_DIRECTORY",

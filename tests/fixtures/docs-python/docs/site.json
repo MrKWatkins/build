@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "title": "Python example",
+  "repository": "https://github.com/Example/Library",
+  "base": "/example/",
+  "guide": [{ "text": "Overview", "link": "/" }],
+  "api": {
+    "generator": "griffe2md",
+    "sourceDirectory": "src",
+    "packages": ["example"],
+    "directory": "artifacts/python-api"
+  }
+}

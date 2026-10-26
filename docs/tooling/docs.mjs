@@ -57,15 +57,23 @@ async function prepare(config, options, stage) {
   requireValue(!(await readdir(source)).includes('.vitepress'), 'Keep VitePress configuration in the shared toolchain.');
   let api = [];
   if (config.api) {
-    requireValue(config.api.generator === 'sesharp', 'The supported API generator is sesharp.');
-    requireValue(Array.isArray(config.api.assemblies) && config.api.assemblies.length, 'api.assemblies must contain Release assembly paths.');
+    requireValue(['sesharp', 'griffe2md'].includes(config.api.generator), 'The supported API generators are sesharp and griffe2md.');
     requireValue(/^[a-f\d]{40}$/i.test(options['source-ref'] ?? ''), '--source-ref must be the full API source commit SHA.');
-    const apiDirectory = options['api-directory'] === '.' ? root : await repositoryPath(options['api-directory'], 'api-directory');
-    const assemblies = await Promise.all(config.api.assemblies.map(value => repositoryPath(value, 'api.assemblies', apiDirectory)));
-    const generated = path.join(stage, 'generated');
-    await run('sesharp', [...assemblies, '--output', generated, '--repository', config.repository, '--source-ref', options['source-ref']]);
-    const manifest = JSON.parse(await readFile(path.join(generated, 'navigation.json'), 'utf8'));
-    api = await apiNavigation(manifest, file => readFile(path.join(generated, file), 'utf8'));
+    let generated;
+    if (config.api.generator === 'sesharp') {
+      requireValue(Array.isArray(config.api.assemblies) && config.api.assemblies.length, 'api.assemblies must contain Release assembly paths.');
+      const apiDirectory = options['api-directory'] === '.' ? root : await repositoryPath(options['api-directory'], 'api-directory');
+      const assemblies = await Promise.all(config.api.assemblies.map(value => repositoryPath(value, 'api.assemblies', apiDirectory)));
+      generated = path.join(stage, 'generated');
+      await run('sesharp', [...assemblies, '--output', generated, '--repository', config.repository, '--source-ref', options['source-ref']]);
+      const manifest = JSON.parse(await readFile(path.join(generated, 'navigation.json'), 'utf8'));
+      api = await apiNavigation(manifest, file => readFile(path.join(generated, file), 'utf8'));
+    } else {
+      generated = await repositoryPath(config.api.directory, 'api.directory');
+      const manifest = JSON.parse(await readFile(path.join(generated, 'navigation.json'), 'utf8'));
+      requireValue(manifest.schemaVersion === 1, 'Python API navigation must use schemaVersion 1.');
+      api = navigation(manifest.items, 'Python API navigation');
+    }
     const destination = path.join(source, 'api');
     await mkdir(destination, { recursive: true });
     for (const file of await files(generated)) {

@@ -4,6 +4,7 @@
 import json
 import os
 import shutil
+import sys
 import time
 from pathlib import Path
 from urllib.error import URLError
@@ -95,6 +96,46 @@ def test_base_image_builds_guide_without_dotnet(tmp_path):
         "for (const path of ['/usr/share/dotnet', '/usr/local/bin/dotnet', '/usr/local/bin/sesharp']) "
         "assert.equal(fs.existsSync(path), false, path);",
     )
+
+
+def test_base_image_builds_static_python_api_with_the_shared_theme(tmp_path):
+    workspace = tmp_path / "python source with spaces"
+    shutil.copytree(FIXTURES / "docs-python", workspace)
+    result = build.run(
+        sys.executable,
+        build.ROOT / "docs/python-api/generate.py",
+        "--source-ref",
+        SOURCE_REF,
+        cwd=workspace,
+        capture=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout
+    image = os.environ.get("DOCS_BASE_TEST_IMAGE", "docs-base:local")
+    checked("docker", "run", "--rm", *container_arguments(workspace), image, "build", "--source-ref", SOURCE_REF)
+    page = (workspace / "artifacts/docs/api/example/Value.html").read_text()
+    assert 'id="properties"' in page and 'id="member-value"' in page
+    assert 'id="member-reset-value"' in page
+    assert 'id="member-getitem"' in page
+    assert "<code>__getitem__</code>" in page
+    assert '<code>__getitem__</code> <a class="header-anchor"' in page
+    assert "</code> {#member-" not in page
+    assert "The stored integer" in page
+    assert f"https://github.com/Example/Library/blob/{SOURCE_REF}/src/example/__init__.py" in page
+    assert "VPSidebar" in page
+    manifest = json.loads((workspace / "artifacts/python-api/navigation.json").read_text())
+
+    def check_navigation(items):
+        for item in items:
+            route, _, anchor = item["link"].partition("#")
+            relative = route.removeprefix("/api/")
+            filename = relative + ("index.html" if relative.endswith("/") else ".html")
+            html = (workspace / "artifacts/docs/api" / filename).read_text()
+            if anchor:
+                assert f'id="{anchor}"' in html, item
+            check_navigation(item.get("items", []))
+
+    check_navigation(manifest["items"])
 
 
 def test_site_contains_versioned_api_source_links_and_nested_types(workspace, image):

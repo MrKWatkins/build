@@ -1,0 +1,147 @@
+name: Python project
+description: Build and test a Python package, validate its documentation, and optionally publish PyPI packages and Pages.
+inputs:
+  python-version:
+    description: Python version used by uv.
+    default: '3.14'
+  dotnet-version:
+    description: Optional .NET SDK for pythonnet-based packages.
+    default: ''
+  version:
+    description: Optional release version; blank increments the latest stable tag minor version, starting from 0.0.0.
+    default: ''
+  docs:
+    description: Generate and validate the documentation site.
+    default: 'true'
+  docs-config:
+    description: Repository-relative documentation configuration.
+    default: docs/site.json
+  publish-packages:
+    description: Publish the validated wheel and source distribution to PyPI and create a release tag.
+    default: 'false'
+  publish-docs:
+    description: Deploy validated documentation to GitHub Pages.
+    default: 'false'
+  api-ref:
+    description: Optional API source override for docs-only releases.
+    default: ''
+  coverage:
+    description: Collect branch coverage and generate an informational summary.
+    default: 'true'
+  coverage-source:
+    description: Comma-separated coverage.py source directories or packages.
+    default: src
+  coverage-package-filters:
+    description: Semicolon-separated +include/-exclude package globs.
+    default: +*
+  coverage-file-filters:
+    description: Semicolon-separated +include/-exclude source path globs.
+    default: +*
+outputs:
+  version:
+    description: Resolved release version.
+    value: ${{ steps.source.outputs.version }}
+  page-url:
+    description: Deployed Pages URL.
+    value: ${{ steps.deploy.outputs.page_url }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 0
+    - name: Resolve Python release source
+      if: inputs.publish-packages == 'true' || inputs.publish-docs == 'true'
+      id: source
+      shell: python
+      env:
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+        VERSION: ${{ inputs.version }}
+        PUBLISH_PACKAGES: ${{ inputs.publish-packages }}
+        API_REF: ${{ inputs.api-ref }}
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ['BUILD_SCRIPT'], 'python-release-source']
+        runpy.run_path(sys.argv[0], run_name='__main__')
+    - name: Build and test Python
+      if: inputs.publish-packages == 'true' || inputs.publish-docs != 'true'
+      uses: MrKWatkins/build/python/build@main
+      with:
+        python-version: ${{ inputs.python-version }}
+        dotnet-version: ${{ inputs.dotnet-version }}
+        version: ${{ steps.source.outputs.version }}
+        coverage: ${{ inputs.coverage }}
+        coverage-source: ${{ inputs.coverage-source }}
+        coverage-package-filters: ${{ inputs.coverage-package-filters }}
+        coverage-file-filters: ${{ inputs.coverage-file-filters }}
+    - uses: astral-sh/setup-uv@v10.3.2
+      if: inputs.publish-docs == 'true' && inputs.publish-packages != 'true'
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Check out released API source
+      if: inputs.publish-docs == 'true' && inputs.publish-packages != 'true'
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ steps.source.outputs.commit }}
+        path: artifacts/api-source
+    - name: Generate Python API
+      if: inputs.docs == 'true'
+      shell: python
+      env:
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+        DOCS_CONFIG: ${{ inputs.docs-config }}
+        SOURCE_REF: ${{ steps.source.outputs.commit || github.sha }}
+        API_DIRECTORY: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' && 'artifacts/api-source' || '.' }}
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ['BUILD_SCRIPT'], 'python-api']
+        runpy.run_path(sys.argv[0], run_name='__main__')
+    - name: Build and validate documentation
+      if: inputs.docs == 'true'
+      uses: MrKWatkins/build/docs/build@main
+      with:
+        config: ${{ inputs.docs-config }}
+        version: ${{ steps.source.outputs.version || 'dev' }}
+        source-ref: ${{ steps.source.outputs.commit || github.sha }}
+        image: ghcr.io/mrkwatkins/docs-base:latest
+    - uses: actions/upload-artifact@v7
+      if: inputs.publish-packages == 'true'
+      with:
+        name: packages
+        path: artifacts/packages/*
+        if-no-files-found: error
+        retention-days: 14
+    - uses: actions/upload-pages-artifact@v5
+      if: inputs.publish-docs == 'true'
+      with:
+        path: artifacts/docs
+        retention-days: 14
+    - name: Publish Python packages
+      if: inputs.publish-packages == 'true'
+      shell: python
+      env:
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ['BUILD_SCRIPT'], 'python-publish']
+        runpy.run_path(sys.argv[0], run_name='__main__')
+    - name: Create GitHub release
+      if: inputs.publish-packages == 'true'
+      uses: MrKWatkins/build/release/create@main
+      with:
+        version: ${{ steps.source.outputs.version }}
+        commit: ${{ steps.source.outputs.commit }}
+    - name: Check release freshness
+      if: inputs.publish-docs == 'true'
+      shell: python
+      env:
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+        VERSION: ${{ steps.source.outputs.version }}
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ['BUILD_SCRIPT'], 'python-freshness']
+        runpy.run_path(sys.argv[0], run_name='__main__')
+    - uses: actions/deploy-pages@v5
+      id: deploy
+      if: inputs.publish-docs == 'true'

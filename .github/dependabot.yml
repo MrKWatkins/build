@@ -5,6 +5,7 @@ updates:
   - /
   - /docs/*
   - /dotnet/*
+  - /python/*
   - /release/*
   - /dependabot/*
   schedule:

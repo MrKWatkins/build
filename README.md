@@ -360,3 +360,58 @@ Original project code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE)
 `dependabot/merge` runs from a `workflow_run` workflow after a successful pull request build. It merges only same-repository Dependabot PRs targeting the default branch, with verified bot commits whose metadata contains only minor or patch updates. The merge uses the tested head SHA and preserves GitHub's branch protection and review requirements. Major, unknown, failed, superseded and untested updates remain open. The action never checks out or executes pull request code. After a successful merge it deletes the tested Dependabot branch, unless GitHub has already deleted it or its head has changed.
 
 See `.github/workflows/dependabot-merge.yml` for a caller. Set `dispatch-build: true` only when the build workflow supports `workflow_dispatch` and needs a default-branch run after merging; grant that caller `actions: write`. This repo uses it to publish tested documentation images, because merges using `GITHUB_TOKEN` do not trigger push workflows.
+
+## Python projects
+
+`python/project` follows the same build/release pattern as `dotnet/project`: locked `uv` dependencies, Ruff checks, `ty`, pytest, JUnit/Cobertura summaries,
+wheel and source-distribution builds, documentation validation, then optional publication. Coverage has no percentage gate. Set `dotnet-version` only for
+packages that need .NET through pythonnet.
+
+```yaml
+- uses: MrKWatkins/build/python/project@main
+  with:
+    python-version: '3.14'
+    dotnet-version: 10.0.x
+```
+
+Call it once per Python matrix version. Set `docs: 'false'` on the other matrix legs to validate the site once. `coverage-source` defaults to `src`;
+`coverage-package-filters` and `coverage-file-filters` use the reporter's `+include;-exclude` syntax. `python/build` provides the same checks and packaging
+without checkout, documentation or publication. Distribution output defaults to `artifacts/packages` and must be empty before a build.
+
+Release inputs are `version`, `publish-packages`, `publish-docs` and `api-ref`, with the same meanings as the .NET project action. A blank version increments
+the latest stable Git tag's minor version. Before the first tag, the baseline is `0.0.0`. Docs-only publication does not create
+a tag or publish distributions. With no existing release tag it uses `0.0.0` and current source; otherwise it uses the tagged API source,
+unless `api-ref` explicitly overrides it. The deployment freshness check prevents publishing documentation for an older release.
+
+Python projects use Hatchling with `hatch-vcs` and `dynamic = ["version"]` instead of a fixed `project.version`. Local builds derive versions from Git tags. Release builds pass the selected version through `SETUPTOOLS_SCM_PRETEND_VERSION`; the checkout and `uv.lock` are not modified. Publication uses `uv publish` with trusted
+publishing required: configure the PyPI project for the consumer repository, release workflow and job environment. No API-token input is accepted.
+The calling release job needs `contents: write`, `pages: write` and `id-token: write`, plus a Pages-enabled environment, as with the .NET workflow.
+
+### Python API documentation
+
+Use Griffe2md for API Markdown and the shared VitePress theme for the guide and API. Griffe reads source statically; importing the documented package is
+disabled, so .NET assemblies and other runtime dependencies are unnecessary for docs-only builds.
+
+```json
+"api": {
+  "generator": "griffe2md",
+  "sourceDirectory": "src",
+  "packages": ["example.public_api"],
+  "directory": "artifacts/python-api"
+}
+```
+
+List the public modules/packages in `packages`. Their string-valued `__all__` defines exported objects; without it, public definitions are selected.
+The adapter renders classes, properties, methods, enum values, functions and constants with pinned source links. Generated API pages and navigation
+live under ignored `artifacts/`, outside handwritten `docs/content`. The Node-only `docs-base` image renders and validates the complete site.
+
+The generator is a standalone uv script with its dependency pinned in its script metadata:
+
+```sh
+uv run --script /path/to/build/docs/python-api/generate.py --source-ref FULL_COMMIT_SHA
+python3 /path/to/build/scripts/build.py python-build
+VERSION=1.2.3 python3 /path/to/build/scripts/build.py python-pack
+```
+
+`python/project` runs the API generator automatically. `python-api`, `python-release-source`, `python-freshness` and `python-publish` are also available
+through `scripts/build.py` for custom workflows. Configure a project's preview script to generate its API before starting the shared documentation container.
