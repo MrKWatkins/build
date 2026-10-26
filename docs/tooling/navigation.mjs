@@ -49,7 +49,8 @@ export async function apiNavigation(manifest, readPage) {
     const page = await readPage(entry.path);
     // Generated headings identify overloaded properties and methods alike; IDs alone cannot distinguish them.
     const heading = /^# (.+)\r?$/m.exec(page)?.[1];
-    const section = sections.find(([, kind]) => new RegExp(` ${kind}s?$`).test(heading ?? ''));
+    const normalized = heading?.replace(/ (enummember|packedfield)$/i, ' Field').replace(/ indexer$/i, ' Property');
+    const section = sections.find(([, kind]) => new RegExp(` ${kind}s?$`, 'i').test(normalized ?? ''));
     if (!section) throw new Error(`Cannot determine member category: ${entry.path}`);
     categories.set(entry.id, section[0]);
   }));

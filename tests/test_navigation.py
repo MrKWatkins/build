@@ -138,6 +138,23 @@ def test_generic_and_real_nested_types_are_preserved_and_html_escaped(entries):
     }
 
 
+@pytest.mark.parametrize(
+    "kind, category",
+    [("method", "Methods"), ("enummember", "Fields"), ("packedfield", "Fields"), ("indexer", "Properties")],
+)
+def test_oakley_member_kinds_use_shared_categories(entries, kind, category):
+    entries.append(entry("M:oakley", "Example/Widget/Read.md", "Read"))
+    groups = navigation(entries, {"Example/Widget/Read.md": f"# Read {kind}\n"})[0]["items"][0]["items"]
+    assert groups == [
+        {
+            "text": category,
+            "link": f"/api/Example/Widget/#{category.lower()}",
+            "collapsed": True,
+            "items": [{"text": "Read", "link": "/api/Example/Widget/Read"}],
+        }
+    ]
+
+
 def test_empty_types_have_no_empty_categories(entries):
     assert navigation(entries)[0]["items"] == [{"text": "Widget", "link": "/api/Example/Widget/"}]
 

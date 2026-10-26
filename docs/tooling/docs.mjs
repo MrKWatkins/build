@@ -57,7 +57,7 @@ async function prepare(config, options, stage) {
   requireValue(!(await readdir(source)).includes('.vitepress'), 'Keep VitePress configuration in the shared toolchain.');
   let api = [];
   if (config.api) {
-    requireValue(['sesharp', 'griffe2md'].includes(config.api.generator), 'The supported API generators are sesharp and griffe2md.');
+    requireValue(['sesharp', 'griffe2md', 'prebuilt'].includes(config.api.generator), 'The supported API generators are sesharp, griffe2md and prebuilt.');
     requireValue(/^[a-f\d]{40}$/i.test(options['source-ref'] ?? ''), '--source-ref must be the full API source commit SHA.');
     let generated;
     if (config.api.generator === 'sesharp') {
@@ -71,8 +71,12 @@ async function prepare(config, options, stage) {
     } else {
       generated = await repositoryPath(config.api.directory, 'api.directory');
       const manifest = JSON.parse(await readFile(path.join(generated, 'navigation.json'), 'utf8'));
-      requireValue(manifest.schemaVersion === 1, 'Python API navigation must use schemaVersion 1.');
-      api = navigation(manifest.items, 'Python API navigation');
+      if (config.api.generator === 'prebuilt') {
+        api = await apiNavigation(manifest, file => readFile(path.join(generated, file), 'utf8'));
+      } else {
+        requireValue(manifest.schemaVersion === 1, 'Python API navigation must use schemaVersion 1.');
+        api = navigation(manifest.items, 'Python API navigation');
+      }
     }
     const destination = path.join(source, 'api');
     await mkdir(destination, { recursive: true });
@@ -99,6 +103,14 @@ async function prepare(config, options, stage) {
     outDir: path.join(stage, 'dist'), cacheDir: path.join(stage, 'cache'),
     ignoreDeadLinks: false, metaChunk: true, themeConfig: theme
   };
+  if (config.languages) {
+    requireValue(Array.isArray(config.languages), 'languages must be an array.');
+    settings.markdown = { languages: await Promise.all(config.languages.map(async language => {
+      requireValue(typeof language.name === 'string' && language.name.length, 'Each language needs a name.');
+      const grammar = JSON.parse(await readFile(await repositoryPath(language.grammar, 'language.grammar'), 'utf8'));
+      return { ...grammar, name: language.name, aliases: language.aliases ?? [] };
+    })) };
+  }
   if (config.publicDirectory) {
     const assets = await repositoryPath(config.publicDirectory, 'publicDirectory');
     await files(assets);

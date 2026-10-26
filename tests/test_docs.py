@@ -138,6 +138,57 @@ def test_base_image_builds_static_python_api_with_the_shared_theme(tmp_path):
     check_navigation(manifest["items"])
 
 
+@pytest.mark.parametrize("invalid_manifest", [False, True])
+def test_base_image_builds_prebuilt_api_or_rejects_invalid_navigation(tmp_path, invalid_manifest):
+    workspace = tmp_path / "prebuilt source with spaces"
+    shutil.copytree(FIXTURES / "docs-base", workspace)
+    generated = workspace / "docs/API"
+    generated.mkdir()
+    pages = {
+        "index.md": "# API\n\n[Example](Example/index.md)\n",
+        "Example/index.md": "# Example Namespace\n\n[Value](Value/index.md)\n",
+        "Example/Value/index.md": "# Value Type\n\n## Methods\n\n[Read](Read.md)\n",
+        "Example/Value/Read.md": "# Value.Read Method\n\nReturns a byte.\n\n```oak\nreturn 1;\n```\n",
+    }
+    for name, content in pages.items():
+        target = generated / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    entries = [
+        {"id": "N:Example", "path": "Example/index.md", "title": "Example", "kind": "namespace", "parent": None},
+        {"id": "T:Value", "path": "Example/Value/index.md", "title": "Value", "kind": "type", "parent": "N:Example"},
+        {"id": "M:Read", "path": "Example/Value/Read.md", "title": "Read", "kind": "member", "parent": "T:Value"},
+    ]
+    if invalid_manifest:
+        entries[-1]["parent"] = "missing"
+    (generated / "navigation.json").write_text(json.dumps({"schemaVersion": 1, "entries": entries}))
+    config = workspace / "docs/site.json"
+    settings = json.loads(config.read_text())
+    settings["api"] = {"generator": "prebuilt", "directory": "docs/API"}
+    settings["languages"] = [{"name": "oakley", "aliases": ["oak"], "grammar": "docs/oakley.json"}]
+    (workspace / "docs/oakley.json").write_text(
+        json.dumps({"scopeName": "source.oakley", "patterns": [{"name": "keyword.control.oakley", "match": "return"}]})
+    )
+    config.write_text(json.dumps(settings))
+    image = os.environ.get("DOCS_BASE_TEST_IMAGE", "docs-base:local")
+    result = build_site(workspace, image, check=False)
+    if invalid_manifest:
+        assert result.returncode != 0
+        assert "Missing or cyclic API parent for M:Read" in result.stdout
+        assert not (workspace / "artifacts/docs/index.html").exists()
+    else:
+        assert result.returncode == 0, result.stdout
+        output = workspace / "artifacts/docs"
+        assert "Returns a byte" in (output / "api/Example/Value/Read.html").read_text()
+        page = (output / "api/Example/Value/Read.html").read_text()
+        assert 'class="language-oak ' in page
+        assert ';">return</span>' in page
+        assert "not loaded" not in result.stdout
+        assert 'id="methods"' in (output / "api/Example/Value/index.html").read_text()
+        assert "Validated local links, assets and anchors in 6 HTML pages" in result.stdout
+        assert (generated / "Example/Value/Read.md").read_text() == pages["Example/Value/Read.md"]
+
+
 def test_site_contains_versioned_api_source_links_and_nested_types(workspace, image):
     introduction = workspace / "docs/content/api/introduction.md"
     original = introduction.read_bytes()
