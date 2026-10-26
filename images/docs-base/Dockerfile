@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
 # SPDX-License-Identifier: GPL-3.0-only
-FROM node:24-bookworm-slim AS dependencies
+FROM node:26-bookworm-slim AS dependencies
 WORKDIR /opt/docs/tooling
 COPY docs/tooling/package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-FROM node:24-bookworm-slim AS styles
+FROM node:26-bookworm-slim AS styles
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip hunspell-en-gb \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /downloads
@@ -24,7 +24,7 @@ RUN curl -fsSL https://github.com/vale-cli/vale/releases/download/v3.24.0/vale_3
     && curl -fsSL https://raw.githubusercontent.com/vale-cli/Microsoft/v0.15.1/LICENSE -o /licenses/Microsoft.txt \
     && curl -fsSL https://raw.githubusercontent.com/vale-cli/write-good/v0.4.1/LICENSE -o /licenses/write-good.txt
 
-FROM node:24-bookworm-slim
+FROM node:26-bookworm-slim
 LABEL org.opencontainers.image.title="Shared documentation toolchain" \
       org.opencontainers.image.source="https://github.com/MrKWatkins/build" \
       org.opencontainers.image.licenses="GPL-3.0-only"
