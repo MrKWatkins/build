@@ -33,7 +33,13 @@ inputs:
     description: Collect coverage and generate the GitHub summary.
   coverage-assembly-filters:
     default: +*
-    description: Coverage assembly filters.
+    description: Semicolon-separated +include/-exclude library globs. Test libraries are always excluded.
+  coverage-file-filters:
+    description: Semicolon-separated +include/-exclude source path globs. Test files are always excluded.
+    default: +*
+  test-report:
+    description: Generate test summaries. Requires Microsoft.Testing.Extensions.TrxReport in every test project.
+    default: 'true'
   dotnet-version:
     default: 10.0.x
     description: SDK version to install.
@@ -77,6 +83,8 @@ runs:
         dotnet-version: ${{ inputs.dotnet-version }}
         coverage: ${{ inputs.coverage }}
         coverage-assembly-filters: ${{ inputs.coverage-assembly-filters }}
+        coverage-file-filters: ${{ inputs.coverage-file-filters }}
+        test-report: ${{ inputs.test-report }}
         test-filter: ${{ inputs.test-filter }}
     - name: Resolve package version
       if: inputs.publish-packages == 'true'
@@ -94,6 +102,8 @@ runs:
         dotnet-version: ${{ inputs.dotnet-version }}
         coverage: ${{ inputs.coverage }}
         coverage-assembly-filters: ${{ inputs.coverage-assembly-filters }}
+        coverage-file-filters: ${{ inputs.coverage-file-filters }}
+        test-report: ${{ inputs.test-report }}
         test-filter: ${{ inputs.test-filter }}
     - name: Resolve released API source
       if: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' }}

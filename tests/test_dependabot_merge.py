@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
@@ -58,13 +59,18 @@ def scenario():
                 "": {"allow_squash_merge": True},
                 "/pulls/2/merge": {"merged": True},
                 "/actions/workflows/5/dispatches": None,
+                "/git/ref/heads/dependabot/nuget/minor-and-patch-123": {"object": {"sha": "tested"}},
+                "/git/refs/heads/dependabot/nuget/minor-and-patch-123": None,
             }
             self.writes = []
 
         def request(self, path, data=None, method=None):
-            if data is not None:
+            if data is not None or method == "DELETE":
                 self.writes.append((path, data, method))
-            return self.values[path]
+            result = self.values[path]
+            if isinstance(result, Exception):
+                raise result
+            return result
 
         def pages(self, path):
             return self.values[path]
@@ -77,7 +83,10 @@ def test_merge_passed_minor_updates_at_exact_tested_commit(scenario, update):
     event, github = scenario
     github.values["/pulls/2/commits"] = [commit(update)]
     merge.merge_updates(event, github)
-    assert github.writes == [("/pulls/2/merge", {"sha": "tested", "merge_method": "squash"}, None)]
+    assert github.writes == [
+        ("/pulls/2/merge", {"sha": "tested", "merge_method": "squash"}, None),
+        ("/git/refs/heads/dependabot/nuget/minor-and-patch-123", None, "DELETE"),
+    ]
 
 
 @pytest.mark.parametrize("update", ["major", "unknown"])
@@ -217,3 +226,27 @@ def test_never_dispatch_build_for_major_update(scenario):
     github.values["/pulls/2/commits"] = [commit("major")]
     merge.merge_updates(event, github, dispatch_build=True)
     assert github.writes == []
+
+
+def test_leave_branch_that_changed_after_merge(scenario):
+    event, github = scenario
+    github.values["/git/ref/heads/dependabot/nuget/minor-and-patch-123"] = {"object": {"sha": "new-update"}}
+    merge.merge_updates(event, github)
+    assert len(github.writes) == 1
+    assert github.writes[0][0] == "/pulls/2/merge"
+
+
+def test_tolerate_already_deleted_branch(scenario):
+    event, github = scenario
+    github.values["/git/ref/heads/dependabot/nuget/minor-and-patch-123"] = HTTPError("url", 404, "Not Found", {}, None)
+    merge.merge_updates(event, github, dispatch_build=True)
+    assert github.writes[-1] == ("/actions/workflows/5/dispatches", {"ref": "main"}, "POST")
+
+
+def test_report_branch_cleanup_permission_failure(scenario):
+    event, github = scenario
+    github.values["/git/ref/heads/dependabot/nuget/minor-and-patch-123"] = HTTPError("url", 403, "Forbidden", {}, None)
+    with pytest.raises(HTTPError) as error:
+        merge.merge_updates(event, github)
+    assert error.value.code == 403
+    assert not any(write[2] == "DELETE" for write in github.writes)

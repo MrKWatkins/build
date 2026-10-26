@@ -21,8 +21,8 @@ Consumer `global.json` must select native MTP:
 ```
 
 Test projects need the MTP runner and, when coverage is enabled, the
-`Microsoft.Testing.Extensions.CodeCoverage` extension. The optional `test-filter`
-input uses NUnit/MSTest filter expressions.
+`Microsoft.Testing.Extensions.CodeCoverage` extension. Test summaries are enabled by default, so every test project also needs
+`Microsoft.Testing.Extensions.TrxReport`. Set `test-report: 'false'` to disable them. The optional `test-filter` input uses NUnit/MSTest filter expressions.
 
 For repositories with additional build prerequisites, set `prepare: scripts/prepare.py` on `dotnet/project`.
 The optional repository-relative Python script runs with Node 24 available, after SDK setup and before restore/build, including docs-only releases. It can install workloads,
@@ -124,12 +124,54 @@ The individual actions remain available for workflows that need custom preparati
 `dotnet/build` restores, checks formatting, builds and tests. Formatting remains advisory during consolidation; compilation, tests and coverage reporting must
 succeed. Source changes should always run this workflow, including after docs validation is added.
 
-Coverage is on by default. ReportGenerator 5.5.10 merges MTP Cobertura files and writes `artifacts/coverage/Cobertura.xml` and `SummaryGithub.md`, appending the
-latter to the job summary. It is installed temporarily outside the checkout; no tool manifest is created or changed. There is no coverage percentage gate.
-Set `coverage: 'false'` to skip collection, tool installation and reporting.
+Coverage is on by default. The standard-library Python reporter merges MTP Cobertura files into `artifacts/coverage/Cobertura.xml`, writes
+`SummaryGithub.md`, and appends it to the job summary. There is no reporting tool to install and no coverage percentage gate.
+Set `coverage: 'false'` to skip collection and coverage reporting. Test reporting is independent and enabled by default; set `test-report: 'false'` to disable it.
 
-Build inputs: `directory` (default `src`), `version` (optional), `test-filter` (optional), `coverage` (default `true`), `coverage-assembly-filters` (default
-`+*`, ReportGenerator syntax) and `dotnet-version` (default `10.0.x`).
+Test libraries matching `*Tests`, `*Tests.*`, `*TestAssembly` or `*TestAssembly.*` are excluded automatically. Source files under `test`/`tests`
+directories and Python `test_*.py`/`*_test.py` files are also excluded. Additional filters use semicolon-separated `+include`/`-exclude` globs;
+exclusions win. `coverage-assembly-filters` matches library/package names and `coverage-file-filters` matches normalised source paths.
+For example, `coverage-assembly-filters: '+*;-Example.Generated'` or `coverage-file-filters: '+*;-*/generated/*'`.
+
+Line totals count each library/file/line once, even when several test projects exercise it. Branch counts merge conservatively: if overlapping
+Cobertura reports expose counts without enough information to identify the individual branches, the summary marks the result with `≥` as a lower
+bound. The merged XML uses the same conservative counts. Conflicting branch denominators fail reporting rather than combine different source versions.
+
+Raw test and coverage files are retained under `artifacts/test-results/raw/<run>/`, including after test or reporting failures. Test summaries are
+written to `artifacts/test-results/SummaryGithub.md`. Original test failures take precedence over reporting errors; reporting errors also fail an
+otherwise successful build. A low coverage percentage never fails the build.
+
+Other build inputs are `directory` (default `src`), `version` (optional), `test-filter` (optional), and `dotnet-version` (default `10.0.x`).
+
+## Reporting .NET and Python results
+
+`reports` accepts TRX or JUnit test results and Cobertura coverage, with no GitHub API access or write permissions. It replaces separate test-report,
+coverage-summary and Markdown-publishing actions. Collection remains with Microsoft Testing Platform or pytest and coverage.py.
+Use one glob per line; paths may contain spaces. Multiple test reports count as separate executions, including Python matrix jobs.
+
+```yaml
+- uses: MrKWatkins/build/reports@main
+  if: success() || failure()
+  with:
+    tests: artifacts/test-results/*.xml
+    coverage: artifacts/coverage/python.xml
+    coverage-file-filters: '+*;-*/generated/*'
+```
+
+Generate Python inputs with pytest's JUnit output and coverage.py's XML output. Export coverage even if tests fail; run the reporting action after
+those steps. A full shared Python build action is separate work. The reporter writes job summaries, rather than separate GitHub check runs, so
+Dependabot and fork PRs need no additional permissions. Failed tests make the reporting action fail too.
+
+The same reporter runs locally:
+
+```sh
+python3 scripts/reports.py --coverage 'artifacts/raw/**/*.cobertura.xml' --tests 'artifacts/raw/**/*.trx'
+python3 scripts/reports.py --coverage coverage.xml --tests test-results.xml
+```
+
+`--assembly-filters` and `--file-filters` use the same syntax as the action. Outputs default to `artifacts/coverage` and `artifacts/test-results`;
+override them with `--coverage-directory` and `--test-directory`. Either input format can be used independently. Missing or malformed input files
+are errors. Test reports include pass/fail/skip counts, summed test durations, and expandable failure messages and stack traces.
 
 ## Preparing a release
 
@@ -171,7 +213,8 @@ VERSION=1.2.3 python3 /path/to/build/scripts/build.py build-and-pack
 ```
 
 `BUILD_DIRECTORY` defaults to `src` for build and pack. `PACKAGE_DIRECTORY` defaults to `artifacts/packages` for pack and publish. Build also accepts
-`COVERAGE`, `COVERAGE_DIRECTORY` (default `artifacts/coverage`), `TEST_FILTER` and `COVERAGE_ASSEMBLY_FILTERS`. Relative directories are resolved from the
+`COVERAGE`, `COVERAGE_DIRECTORY` (default `artifacts/coverage`), `TEST_FILTER`, `COVERAGE_ASSEMBLY_FILTERS`, `COVERAGE_FILE_FILTERS`,
+`TEST_REPORT` (default `true`) and `TEST_RESULTS_DIRECTORY` (default `artifacts/test-results`). Relative directories are resolved from the
 initial working directory. Omit `VERSION` for ordinary development builds.
 
 The publishing action handles OIDC authentication; its push script consumes the short-lived `NUGET_API_KEY` output from `NuGet/login`, not a stored repository
@@ -201,7 +244,7 @@ uv run pytest
 
 Use `uv run pytest --run-dotnet` for the real .NET 10 packaging tests. `uv run python scripts/build.py build-images` builds both Docker images and runs the
 Docker documentation tests; `uv run pytest tests/test_docs.py --run-docker` reruns those tests against prepared images. Ordinary tests need no .NET SDK,
-Docker or publishing credentials. Navigation unit tests also use Node, which is provided by GitHub’s runners. CI also runs actionlint. Dependabot maintains action references. ReportGenerator is pinned centrally in `scripts/build.py`.
+Docker or publishing credentials. Navigation unit tests also use Node, which is provided by GitHub’s runners. CI also runs actionlint. Dependabot maintains action references. Reporting runs without external reporting tools; coverage.py is a development-only collector for Python integration tests.
 
 ## Documentation
 
@@ -313,6 +356,6 @@ Original project code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE)
 
 ## Dependabot
 
-`dependabot/merge` runs from a `workflow_run` workflow after a successful pull request build. It merges only same-repository Dependabot PRs targeting the default branch, with verified bot commits whose metadata contains only minor or patch updates. The merge uses the tested head SHA and preserves GitHub's branch protection and review requirements. Major, unknown, failed, superseded and untested updates remain open. The action never checks out or executes pull request code.
+`dependabot/merge` runs from a `workflow_run` workflow after a successful pull request build. It merges only same-repository Dependabot PRs targeting the default branch, with verified bot commits whose metadata contains only minor or patch updates. The merge uses the tested head SHA and preserves GitHub's branch protection and review requirements. Major, unknown, failed, superseded and untested updates remain open. The action never checks out or executes pull request code. After a successful merge it deletes the tested Dependabot branch, unless GitHub has already deleted it or its head has changed.
 
 See `.github/workflows/dependabot-merge.yml` for a caller. Set `dispatch-build: true` only when the build workflow supports `workflow_dispatch` and needs a default-branch run after merging; grant that caller `actions: write`. This repo uses it to publish tested documentation images, because merges using `GITHUB_TOKEN` do not trigger push workflows.

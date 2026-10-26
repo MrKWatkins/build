@@ -87,6 +87,7 @@ def prepare():
 def build():
     directory = Path(os.environ.get("BUILD_DIRECTORY", "src")).resolve(strict=True)
     coverage = boolean("COVERAGE")
+    test_report = boolean("TEST_REPORT")
     version_args = [f"-p:Version={version()}"] if os.environ.get("VERSION") else []
     prepare()
     run("dotnet", "--version", cwd=directory)
@@ -113,38 +114,37 @@ def build():
                 "--coverage",
                 "--coverage-output-format",
                 "cobertura",
-                "--results-directory",
-                str(temporary / "results"),
             ]
+        if test_report:
+            test_args += ["--report-trx"]
+        if coverage or test_report:
+            test_args += ["--results-directory", str(temporary / "results")]
         test = run("dotnet", "test", *test_args, cwd=directory, check=False)
         try:
+            report_args = []
+            destination = Path(os.environ.get("TEST_RESULTS_DIRECTORY", "artifacts/test-results")).resolve()
+            if test_report:
+                report_args += ["--tests", str(temporary / "results/**/*.trx"), "--test-directory", destination]
             if coverage:
-                destination = Path(os.environ.get("COVERAGE_DIRECTORY", "artifacts/coverage")).resolve()
-                destination.mkdir(parents=True, exist_ok=True)
-                tools = temporary / "tools"
-                run(
-                    "dotnet",
-                    "tool",
-                    "install",
-                    "dotnet-reportgenerator-globaltool",
-                    "--version",
-                    "5.5.10",
-                    "--tool-path",
-                    tools,
-                    cwd=directory,
-                )
-                run(
-                    tools / "reportgenerator",
-                    f"-reports:{temporary}/results/**/*.cobertura.xml",
-                    f"-targetdir:{destination}",
-                    "-reporttypes:Cobertura;MarkdownSummaryGithub",
-                    f"-assemblyfilters:{os.environ.get('COVERAGE_ASSEMBLY_FILTERS', '+*')}",
-                    cwd=directory,
-                )
-                summary((destination / "SummaryGithub.md").read_text())
+                report_args += [
+                    "--coverage",
+                    str(temporary / "results/**/*.cobertura.xml"),
+                    "--coverage-directory",
+                    Path(os.environ.get("COVERAGE_DIRECTORY", "artifacts/coverage")).resolve(),
+                    "--assembly-filters=" + os.environ.get("COVERAGE_ASSEMBLY_FILTERS", "+*"),
+                    "--file-filters=" + os.environ.get("COVERAGE_FILE_FILTERS", "+*"),
+                ]
+            if report_args:
+                run(sys.executable, ROOT / "scripts/reports.py", *report_args)
         finally:
-            # Preserve the original test failure even when reporting also fails.
-            test.check_returncode()
+            try:
+                if (temporary / "results").is_dir():
+                    raw = destination / "raw" / temporary.name
+                    shutil.copytree(temporary / "results", raw)
+                    print(f"Raw test and coverage results: {raw}")
+            finally:
+                # Preserve the original test failure even when reporting or copying also fails.
+                test.check_returncode()
 
 
 def pack():

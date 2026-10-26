@@ -126,10 +126,11 @@ def test_release_pins_tested_version_commit_and_pages_artifact(project):
 
 
 def test_inline_action_code_compiles_and_references_existing_scripts():
-    for action in ROOT.glob("*/*/action.yml"):
+    for action in [*ROOT.glob("*/action.yml"), *ROOT.glob("*/*/action.yml")]:
         settings = yaml.safe_load(action.read_text())
         for step in settings["runs"]["steps"]:
             if step.get("shell") == "python":
                 compile(step["run"], str(action), "exec")
-                if path := step.get("env", {}).get("BUILD_SCRIPT"):
-                    assert (action.parent / path.split("}}/")[1]).resolve().is_file(), action
+                for name in ("BUILD_SCRIPT", "REPORT_SCRIPT"):
+                    if path := step.get("env", {}).get(name):
+                        assert (action.parent / path.split("}}/")[1]).resolve().is_file(), action

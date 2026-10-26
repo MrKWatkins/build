@@ -29,7 +29,25 @@ jobs:
       - name: Check workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -color
       - name: Test build and publication boundaries
-        run: uv run --frozen pytest --run-dotnet
+        id: tests
+        run: uv run --frozen coverage run --branch --source=scripts,dependabot -m pytest --run-dotnet --junitxml=artifacts/test-results/pytest.xml
+      - name: Export Python coverage
+        if: (success() || failure()) && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure')
+        run: uv run --frozen coverage xml -o artifacts/coverage/python.xml
+      - uses: ./reports
+        if: (success() || failure()) && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure')
+        with:
+          tests: artifacts/test-results/pytest.xml
+          coverage: artifacts/coverage/python.xml
+      - uses: actions/upload-artifact@v7
+        if: (success() || failure()) && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure')
+        with:
+          name: reports
+          path: |
+            artifacts/test-results
+            artifacts/coverage
+          if-no-files-found: error
+          retention-days: 14
       - name: Build and test documentation images
         env:
           IMAGE_VERSION: sha-${{ github.sha }}

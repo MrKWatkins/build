@@ -6,6 +6,7 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "coverage>=7.17.0",
     "pytest",
     "pyyaml>=6.0.3",
     "ruff",

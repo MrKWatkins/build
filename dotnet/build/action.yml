@@ -17,8 +17,14 @@ inputs:
     description: Collect Cobertura coverage and generate a job summary.
     default: 'true'
   coverage-assembly-filters:
-    description: Optional ReportGenerator assembly filters.
+    description: Semicolon-separated +include/-exclude library globs. Test libraries are always excluded.
     default: +*
+  coverage-file-filters:
+    description: Semicolon-separated +include/-exclude source path globs. Test files are always excluded.
+    default: +*
+  test-report:
+    description: Generate test summaries. Requires Microsoft.Testing.Extensions.TrxReport in every test project.
+    default: 'true'
   dotnet-version:
     description: .NET SDK version to install.
     default: 10.0.x
@@ -38,6 +44,8 @@ runs:
         TEST_FILTER: ${{ inputs.test-filter }}
         COVERAGE: ${{ inputs.coverage }}
         COVERAGE_ASSEMBLY_FILTERS: ${{ inputs.coverage-assembly-filters }}
+        COVERAGE_FILE_FILTERS: ${{ inputs.coverage-file-filters }}
+        TEST_REPORT: ${{ inputs.test-report }}
       run: |
         import os, runpy, sys
         sys.argv = [os.environ["BUILD_SCRIPT"], 'build']

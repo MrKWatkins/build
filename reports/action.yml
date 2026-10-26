@@ -1,0 +1,45 @@
+name: Test and coverage reports
+description: Summarise TRX/JUnit tests and Cobertura coverage using Python's standard library.
+inputs:
+  tests:
+    description: TRX or JUnit result globs, one per line. Omit to report coverage only.
+    default: ''
+  coverage:
+    description: Cobertura report globs, one per line. Omit to report tests only.
+    default: ''
+  coverage-assembly-filters:
+    description: Semicolon-separated +include/-exclude library or package globs. Test libraries are always excluded.
+    default: +*
+  coverage-file-filters:
+    description: Semicolon-separated +include/-exclude source path globs. Test files are always excluded.
+    default: +*
+  coverage-directory:
+    description: Output directory for merged Cobertura.xml and SummaryGithub.md.
+    default: artifacts/coverage
+  test-directory:
+    description: Output directory for the test SummaryGithub.md.
+    default: artifacts/test-results
+runs:
+  using: composite
+  steps:
+    - name: Report tests and coverage
+      shell: python
+      env:
+        REPORT_SCRIPT: ${{ github.action_path }}/../scripts/reports.py
+        REPORT_TESTS: ${{ inputs.tests }}
+        REPORT_COVERAGE: ${{ inputs.coverage }}
+        REPORT_ASSEMBLY_FILTERS: ${{ inputs.coverage-assembly-filters }}
+        REPORT_FILE_FILTERS: ${{ inputs.coverage-file-filters }}
+        REPORT_COVERAGE_DIRECTORY: ${{ inputs.coverage-directory }}
+        REPORT_TEST_DIRECTORY: ${{ inputs.test-directory }}
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ['REPORT_SCRIPT'],
+                    '--assembly-filters=' + os.environ['REPORT_ASSEMBLY_FILTERS'],
+                    '--file-filters=' + os.environ['REPORT_FILE_FILTERS'],
+                    '--coverage-directory', os.environ['REPORT_COVERAGE_DIRECTORY'],
+                    '--test-directory', os.environ['REPORT_TEST_DIRECTORY']]
+        for name in ('tests', 'coverage'):
+            if value := os.environ['REPORT_' + name.upper()]:
+                sys.argv += ['--' + name, value]
+        runpy.run_path(sys.argv[0], run_name='__main__')

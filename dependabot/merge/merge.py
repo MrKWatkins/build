@@ -4,6 +4,8 @@ import json
 import os
 import re
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import yaml
@@ -65,6 +67,22 @@ def minor_or_patch(commit):
     )
 
 
+def delete_merged_branch(github, branch, tested_sha):
+    # GitHub may already have deleted it through the repository's automatic cleanup setting.
+    ref = "heads/" + quote(branch, safe="/")
+    try:
+        current = github.request("/git/ref/" + ref)
+        if current["object"]["sha"] != tested_sha:
+            print(f"Branch {branch} has changed since the tested merge; leaving it intact.")
+            return
+        github.request("/git/refs/" + ref, method="DELETE")
+        print(f"Deleted merged branch {branch}.")
+    except HTTPError as error:
+        if error.code != 404:
+            raise
+        print(f"Merged branch {branch} is already deleted.")
+
+
 def merge_updates(event, github, dispatch_build=False):
     run = event.get("workflow_run", {})
     repository = event["repository"]
@@ -118,6 +136,7 @@ def merge_updates(event, github, dispatch_build=False):
         if not result.get("merged"):
             raise RuntimeError(f"GitHub did not merge PR #{number}: {result.get('message')}")
         print(f"Merged tested minor/patch updates in PR #{number}.")
+        delete_merged_branch(github, pr["head"]["ref"], run["head_sha"])
         if dispatch_build:
             # GITHUB_TOKEN merges do not generate push workflow runs. Build's main run publishes its tested images.
             github.request(

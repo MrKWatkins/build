@@ -14,6 +14,7 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("BUILD_DIRECTORY", "source with spaces")
     monkeypatch.setenv("VERSION", "1.2.3")
     monkeypatch.setenv("COVERAGE", "false")
+    monkeypatch.setenv("TEST_REPORT", "false")
     return tmp_path
 
 
@@ -80,11 +81,8 @@ def test_test_failure_takes_precedence_over_reporting(workspace, monkeypatch, ru
     def handle(args, kwargs):
         if args[:2] == ("dotnet", "test"):
             return test_exit, ""
-        if args[:2] == ("dotnet", "tool"):
+        if args[:2] == (build.sys.executable, str(build.ROOT / "scripts/reports.py")):
             return report_exit, ""
-        if "reportgenerator" in args[0]:
-            target = next(arg.removeprefix("-targetdir:") for arg in args if arg.startswith("-targetdir:"))
-            Path(target, "SummaryGithub.md").write_text("Coverage summary")
         return 0, ""
 
     runner.handler = handle
@@ -99,19 +97,71 @@ def test_coverage_summary_and_isolated_output(workspace, monkeypatch, runner):
     monkeypatch.setenv("COVERAGE", "true")
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(workspace / "summary"))
     monkeypatch.setenv("COVERAGE_ASSEMBLY_FILTERS", "+Library;-Tests")
+    monkeypatch.setenv("COVERAGE_FILE_FILTERS", "+*;-*/generated/*")
 
     def handle(args, kwargs):
-        if "reportgenerator" in args[0]:
-            (workspace / "artifacts/coverage/SummaryGithub.md").write_text("Coverage: 90%")
+        if args[:2] == ("dotnet", "test"):
+            results = Path(args[-1])
+            results.mkdir()
+            (results / "example.cobertura.xml").write_text("<coverage />")
+        if args[:2] == (build.sys.executable, str(build.ROOT / "scripts/reports.py")):
+            Path(workspace / "summary").write_text("Coverage: 90%\n")
         return 0, ""
 
     runner.handler = handle
     build.build()
     assert (workspace / "summary").read_text() == "Coverage: 90%\n"
-    report = next(args for args, _ in runner.calls if "reportgenerator" in args[0])
-    assert "-assemblyfilters:+Library;-Tests" in report
+    report = runner.commands(build.sys.executable, str(build.ROOT / "scripts/reports.py"))[0]
+    assert "--assembly-filters=+Library;-Tests" in report
+    assert "--file-filters=+*;-*/generated/*" in report
+    assert report[report.index("--coverage-directory") + 1] == str(workspace / "artifacts/coverage")
+    assert not runner.commands("dotnet", "tool")
     results = runner.commands("dotnet", "test")[0][-1]
     assert not Path(results).exists()
+    retained = list((workspace / "artifacts/test-results/raw").glob("*/example.cobertura.xml"))
+    assert len(retained) == 1 and retained[0].read_text() == "<coverage />"
+
+
+@pytest.mark.parametrize("setting", [None, "true", "false"])
+def test_trx_reporting_defaults_on_and_can_be_disabled_without_coverage(workspace, monkeypatch, runner, setting):
+    if setting is None:
+        monkeypatch.delenv("TEST_REPORT")
+    else:
+        monkeypatch.setenv("TEST_REPORT", setting)
+    monkeypatch.setenv("TEST_RESULTS_DIRECTORY", "custom test results")
+    build.build()
+    test = runner.commands("dotnet", "test")[0]
+    assert ("--report-trx" in test) == (setting != "false")
+    assert "--coverage" not in test
+    reports = runner.commands(build.sys.executable, str(build.ROOT / "scripts/reports.py"))
+    if setting == "false":
+        assert not reports
+        return
+    report = reports[0]
+    assert report[report.index("--tests") + 1].endswith("results/**/*.trx")
+    assert report[report.index("--test-directory") + 1] == str(workspace / "custom test results")
+    assert "--coverage" not in report
+
+
+def test_raw_results_survive_failed_tests_and_failed_reporting(workspace, monkeypatch, runner):
+    monkeypatch.setenv("TEST_REPORT", "true")
+
+    def handle(args, kwargs):
+        if args[:2] == ("dotnet", "test"):
+            results = Path(args[-1])
+            results.mkdir()
+            (results / "failed.trx").write_text("partial results")
+            return 7, ""
+        if args[:2] == (build.sys.executable, str(build.ROOT / "scripts/reports.py")):
+            return 9, ""
+        return 0, ""
+
+    runner.handler = handle
+    with pytest.raises(subprocess.CalledProcessError) as failure:
+        build.build()
+    assert failure.value.returncode == 7
+    retained = list((workspace / "artifacts/test-results/raw").glob("*/failed.trx"))
+    assert len(retained) == 1 and retained[0].read_text() == "partial results"
 
 
 def test_build_and_pack_once_without_rebuild(workspace, monkeypatch, runner):
