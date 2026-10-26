@@ -390,7 +390,7 @@ The calling release job needs `contents: write`, `pages: write` and `id-token: w
 ### Python API documentation
 
 Use Griffe2md for API Markdown and the shared VitePress theme for the guide and API. Griffe reads source statically; importing the documented package is
-disabled, so .NET assemblies and other runtime dependencies are unnecessary for docs-only builds.
+disabled, so .NET assemblies and other runtime dependencies are unnecessary for docs-only builds. Set `api.recursive` to `true` to include public submodules with nested navigation. `api.docstringStyle` selects a Griffe parser (`google` by default, or `sphinx` for `:param:` docstrings). Without `__all__`, only public definitions from the module itself are documented; imported helpers are excluded.
 
 ```json
 "api": {

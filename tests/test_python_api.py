@@ -86,3 +86,62 @@ def test_python_api_uses_the_released_source_checkout(package):
 def test_python_api_requires_a_pinned_source_commit(package):
     with pytest.raises(ValueError, match="full commit SHA"):
         api.generate("site.json", ".", "main")
+
+
+def test_recursive_api_nests_modules_and_ignores_imported_helpers(package):
+    config_path = package / "site.json"
+    config = json.loads(config_path.read_text())
+    config["api"].update(recursive=True, docstringStyle="sphinx")
+    config_path.write_text(json.dumps(config))
+    (package / "src/example/value.py").write_text('''from pathlib import Path
+
+class Value:
+    """A stored value."""
+
+    def scale(self, factor: int) -> int:
+        """Scale the value.
+
+        :param factor: The multiplier.
+        :return: The scaled value.
+        """
+        return factor
+''')
+    api.generate("site.json", ".", "1" * 40)
+    output = package / "artifacts/python-api"
+    assert not (output / "example/value/Path.md").exists()
+    page = (output / "example/value/Value.md").read_text()
+    assert "The multiplier" in page and ":param factor:" not in page
+    assert "- `factor` (`int`)" in page
+    assert "[int](#int)" not in page
+    manifest = json.loads((output / "navigation.json").read_text())
+    child = next(item for item in manifest["items"][0]["items"] if item["text"] == "value")
+    assert child["link"] == "/api/example/value/"
+    assert child["items"][0]["text"] == "Value"
+
+
+def test_python_type_alias_is_rendered_without_importing_dependencies(package):
+    (package / "src/example/__init__.py").write_text('''type Number = int | float
+"""A numeric input."""
+__all__ = ["Number"]
+''')
+    api.generate("site.json", ".", "1" * 40)
+    page = (package / "artifacts/python-api/example/Number.md").read_text()
+    assert "# `Number`" in page
+    assert "type Number = int | float" in page
+    assert "A numeric input" in page
+    manifest = json.loads((package / "artifacts/python-api/navigation.json").read_text())
+    assert "items" not in manifest["items"][0]["items"][0]
+
+
+def test_recursive_loading_preserves_same_named_class_reexports(package):
+    config = json.loads((package / "site.json").read_text())
+    config["api"]["recursive"] = True
+    (package / "site.json").write_text(json.dumps(config))
+    (package / "src/example/__init__.py").write_text('from .Value import Value\n__all__ = ["Value"]\n')
+    (package / "src/example/Value.py").write_text('class Value:\n    """A same-named exported class."""\n')
+    api.generate("site.json", ".", "1" * 40)
+    output = package / "artifacts/python-api"
+    assert "A same-named exported class" in (output / "example/Value.md").read_text()
+    assert "A same-named exported class" in (output / "example/Value/Value.md").read_text()
+    manifest = json.loads((output / "navigation.json").read_text())
+    assert any(item["link"] == "/api/example/Value" for item in manifest["items"][0]["items"])

@@ -64,8 +64,21 @@ def generate(config_path, source_root, source_ref):
         or not all(isinstance(name, str) and re.fullmatch(r"\w+(\.\w+)*", name) for name in packages)
     ):
         raise ValueError("api.packages must be a nonempty list of Python module names.")
-    loader = GriffeLoader(search_paths=[source], allow_inspection=False, docstring_parser=Parser.google)
-    modules = [loader.load(name) for name in packages]
+    parser = Parser(api.get("docstringStyle", "google"))
+    loader = GriffeLoader(search_paths=[source], allow_inspection=False, docstring_parser=parser)
+    modules = {}
+
+    def collect(module):
+        if module.path in modules:
+            return
+        modules[module.path] = module
+        if api.get("recursive", False):
+            for name, child in sorted(module.modules.items()):
+                if not name.startswith("_"):
+                    collect(child)
+
+    for name in packages:
+        collect(loader.load(name))
     loader.resolve_aliases(external=False)
 
     def source_link(obj):
@@ -78,7 +91,31 @@ def generate(config_path, source_root, source_ref):
         return "member-" + name.lower().replace("_", "-").strip("-")
 
     def render(obj, level):
-        markdown = render_object_docs(obj, {**OPTIONS, "heading_level": level}).strip()
+        if obj.kind.value == "type alias":
+            # Griffe2md has no template for Python's `type` statements yet.
+            description = obj.docstring.value if obj.docstring else ""
+            markdown = (
+                f"{'#' * level} `{obj.name}`\n\n```python\ntype {obj.name} = {obj.value}\n```\n\n{description}".strip()
+            )
+        else:
+            markdown = render_object_docs(obj, {**OPTIONS, "heading_level": level}).strip()
+        # Griffe2md emits Markdown links inside HTML code spans; VitePress displays
+        # those literally. Keep annotations as code until cross-reference resolution exists.
+        markdown = re.sub(
+            r"<code>(.*?)</code>",
+            lambda match: "`" + re.sub(r"\[([^\]]+)\]\(#[^)]+\)", r"\1", match[1]) + "`",
+            markdown,
+            flags=re.DOTALL,
+        )
+        markdown = re.sub(r"(?m)^- \*\*([\w*]+)\*\*", r"- `\1`", markdown)
+        markdown = re.sub(r"(?<!`)``([^`]+)``(?!`)", r"`\1`", markdown)
+        markdown = re.sub(r":(?:\w+:)?\w+:`([^`]+)`", lambda match: "`" + match[1].lstrip("~") + "`", markdown)
+        # reStructuredText docstrings commonly leave Python identifiers unquoted.
+        # Quote underscored identifiers as code, keeping existing code blocks intact.
+        chunks = re.split(r"(```.*?```|`[^`\n]*`)", markdown, flags=re.DOTALL)
+        for position in range(0, len(chunks), 2):
+            chunks[position] = re.sub(r"(?<![\w/])\b[A-Za-z]\w*_\w+\b", r"`\g<0>`", chunks[position])
+        markdown = "".join(chunks)
         if level == 3:
             # Keep anchor IDs free of Markdown emphasis delimiters, including dunder names.
             heading, separator, body = markdown.partition("\n")
@@ -94,18 +131,25 @@ def generate(config_path, source_root, source_ref):
         shutil.rmtree(output)
     output.mkdir(parents=True)
     navigation, index = [], ["# Python API\n", "Public packages and their exported classes, functions and constants.\n"]
-    for module in modules:
+    entries_by_module = {}
+    for module in modules.values():
         folder = module.path.replace(".", "/")
         link = f"/api/{folder}/"
-        entry = {"text": module.path, "link": link, "collapsed": True, "items": []}
-        index.append(f"- [{module.path}]({link})")
+        parent = entries_by_module.get(module.path.rpartition(".")[0])
+        entry = {"text": module.name if parent else module.path, "link": link, "collapsed": True, "items": []}
+        entries_by_module[module.path] = entry
+        index.append(f"- [`{module.path}`]({link})")
         overview = [
             f"# `{module.path}`\n",
             module.docstring.value if module.docstring else "",
             "\n## Classes and functions\n",
         ]
         exports = module.exports
-        names = list(exports if exports is not None else [n for n in module.members if not n.startswith("_")])
+        names = list(
+            exports
+            if exports is not None
+            else [n for n, member in module.members.items() if not n.startswith("_") and not member.is_alias]
+        )
         if any(not isinstance(n, str) or not n.isidentifier() for n in names):
             raise ValueError(f"{module.path}.__all__ must contain strings.")
         names.sort()
@@ -114,13 +158,16 @@ def generate(config_path, source_root, source_ref):
             obj = module.members[name]
             if obj.is_alias:
                 obj = obj.final_target
+            if obj.is_module and exports is not None and name in obj.members:
+                # Loading a same-named submodule can shadow its class re-export in Griffe.
+                obj = obj.members[name]
             if obj.is_module:
                 continue
             if obj.is_attribute:
                 constants.append(render(obj, 3))
                 continue
             page_link = link + name
-            overview.append(f"- [{name}]({page_link})")
+            overview.append(f"- [`{name}`]({page_link})")
             page = [render(obj, 1)]
             item = {"text": name, "link": page_link}
             if obj.is_class:
@@ -153,7 +200,17 @@ def generate(config_path, source_root, source_ref):
         if constants:
             overview += ["\n## Constants\n", *constants]
         write(folder + "/index.md", "\n".join(overview) + "\n")
-        navigation.append(entry)
+        (parent["items"] if parent else navigation).append(entry)
+
+    def remove_empty_groups(items):
+        for item in items:
+            if item.get("items"):
+                remove_empty_groups(item["items"])
+            else:
+                item.pop("items", None)
+                item.pop("collapsed", None)
+
+    remove_empty_groups(navigation)
     write("index.md", "\n".join(index) + "\n")
     write("navigation.json", json.dumps({"schemaVersion": 1, "items": navigation}, indent=2) + "\n")
     print(f"Python API: {output}")

@@ -13,6 +13,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 from urllib.parse import quote
+from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION_PATTERN = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
@@ -204,6 +205,15 @@ def python_pack():
         list(destination.glob("*.whl")) and list(destination.glob("*.tar.gz")),
         "Expected a wheel and source distribution.",
     )
+    for wheel in destination.glob("*.whl"):
+        with ZipFile(wheel) as archive:
+            require(
+                any(
+                    not name.endswith("/") and not name.split("/")[0].endswith(".dist-info")
+                    for name in archive.namelist()
+                ),
+                f"Wheel contains only metadata, with no package files: {wheel.name}",
+            )
     emit(directory=destination)
 
 

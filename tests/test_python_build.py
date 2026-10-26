@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 import subprocess
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 import yaml
@@ -16,7 +17,8 @@ def project(tmp_path, monkeypatch, runner):
     def handle(args, kwargs):
         if args[:2] == ("uv", "build"):
             destination = Path(args[args.index("--out-dir") + 1])
-            (destination / "example-1.2.3.whl").touch()
+            with ZipFile(destination / "example-1.2.3.whl", "w") as archive:
+                archive.writestr("example/__init__.py", "")
             (destination / "example-1.2.3.tar.gz").touch()
         if args[:4] == ("git", "ls-remote", "--tags", "origin"):
             return 0, "1" * 40 + "\trefs/tags/v1.2.3\n"
@@ -155,3 +157,19 @@ def test_python_api_uses_the_pinned_standalone_generator(project, monkeypatch, r
     assert str(build.ROOT / "docs/python-api/generate.py") in command
     assert command[command.index("--source-root") + 1] == "released source"
     assert command[-1] == "3" * 40
+
+
+def test_python_pack_rejects_metadata_only_wheels(project, runner):
+    original = runner.handler
+
+    def handle(args, kwargs):
+        result = original(args, kwargs)
+        if args[:2] == ("uv", "build"):
+            destination = Path(args[args.index("--out-dir") + 1])
+            with ZipFile(destination / "example-1.2.3.whl", "w") as archive:
+                archive.writestr("example-1.2.3.dist-info/METADATA", "Name: example\n")
+        return result
+
+    runner.handler = handle
+    with pytest.raises(ValueError, match="Wheel contains only metadata"):
+        build.python_pack()
