@@ -176,8 +176,15 @@ def test_dotnet_image_has_runtime_without_sdk_or_package_cache(image):
         image,
         "-e",
         "const fs = require('node:fs'); const assert = require('node:assert/strict'); "
+        "const cp = require('node:child_process'); "
         "for (const path of ['/usr/share/dotnet/sdk', '/root/.nuget/packages']) "
-        "assert.equal(fs.existsSync(path), false, path);",
+        "assert.equal(fs.existsSync(path), false, path); "
+        "const packs = '/usr/share/dotnet/packs/Microsoft.NETCore.App.Ref'; "
+        "assert(fs.readdirSync(packs).some(version => fs.existsSync(packs + '/' + version + '/ref/net10.0/System.Runtime.xml'))); "
+        "const runtimes = cp.execFileSync('dotnet', ['--list-runtimes'], {encoding: 'utf8'}); "
+        "const runtime = runtimes.match(/^Microsoft.NETCore.App (\\S+)/m); "
+        "assert(runtime); "
+        "assert(fs.readFileSync('/opt/docs/versions.txt', 'utf8').includes('.NET runtime ' + runtime[1] + '\\n'));",
     )
 
 
