@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # SPDX-License-Identifier: GPL-3.0-only
 ARG BASE_IMAGE=docs-base:local
-FROM mcr.microsoft.com/dotnet/sdk:10.0.402-noble AS tool
+FROM mcr.microsoft.com/dotnet/sdk:10.0.403-noble AS tool
 ARG SESHARP_VERSION=1.17.0
 RUN dotnet tool install MrKWatkins.Sesharp.Tool --version "$SESHARP_VERSION" --tool-path /opt/sesharp \
     && mkdir -p /tool \
@@ -11,7 +11,7 @@ RUN dotnet tool install MrKWatkins.Sesharp.Tool --version "$SESHARP_VERSION" --t
     && find /reference-xml -type f ! -name '*.xml' -delete \
     && find /reference-xml -type d -empty -delete
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0.13-noble AS runtime
+FROM mcr.microsoft.com/dotnet/runtime:10.0.14-noble AS runtime
 FROM ${BASE_IMAGE}
 ARG SESHARP_VERSION=1.17.0
 RUN apt-get update && apt-get install -y --no-install-recommends libicu72 libssl3 libgssapi-krb5-2 \
