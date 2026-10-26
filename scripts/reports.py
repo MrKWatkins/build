@@ -84,22 +84,20 @@ def filename(value, sources, root):
 
 
 @dataclass
-class Line:
-    hits: int = 0
+class Branches:
     covered: int = 0
     branches: int = 0
     observations: int = 0
 
     def add(self, node):
-        self.hits = max(self.hits, number(node.get("hits"), "line hits"))
-        if node.get("branch", "false").lower() != "true":
-            return
         match = re.fullmatch(r"[\d.]+% \((\d+)/(\d+)\)", node.get("condition-coverage", ""))
         if not match:
             raise ValueError("Branch coverage requires condition-coverage counts, for example 50% (1/2).")
         covered, total = map(int, match.groups())
         if covered > total or total == 0 or (self.branches and self.branches != total):
-            raise ValueError("Inconsistent branch counts for the same source line; reports must cover the same source.")
+            raise ValueError(
+                "Inconsistent branch counts for the same type and source line; reports must cover the same source."
+            )
         self.covered = max(self.covered, covered)
         self.branches = total
         self.observations += 1
@@ -108,6 +106,30 @@ class Line:
     def lower_bound(self):
         # Cobertura counts and even 50% condition entries do not identify which side was covered.
         return self.observations > 1 and 0 < self.covered < self.branches
+
+
+@dataclass
+class Line:
+    hits: int = 0
+    types: dict = field(default_factory=dict)
+
+    def add(self, node, type_name):
+        self.hits = max(self.hits, number(node.get("hits"), "line hits"))
+        if node.get("branch", "false").lower() == "true":
+            # Lambdas and state machines have their own branches on their owner's source line.
+            self.types.setdefault(type_name, Branches()).add(node)
+
+    @property
+    def covered(self):
+        return sum(branches.covered for branches in self.types.values())
+
+    @property
+    def branches(self):
+        return sum(branches.branches for branches in self.types.values())
+
+    @property
+    def lower_bound(self):
+        return any(branches.lower_bound for branches in self.types.values())
 
 
 @dataclass
@@ -181,7 +203,7 @@ def coverage_report(paths, output, assembly_filters="+*", file_filters="+*", roo
                     if line_number == 0:
                         raise ValueError("Coverage line numbers must start at one.")
                     lines = packages.setdefault(name, {}).setdefault(source, {})
-                    lines.setdefault(line_number, Line()).add(node)
+                    lines.setdefault(line_number, Line()).add(node, cls.get("name", ""))
 
     document = ET.Element("coverage", version="1", timestamp=str(int(time.time())))
     ET.SubElement(ET.SubElement(document, "sources"), "source").text = root.as_posix()

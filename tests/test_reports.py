@@ -17,9 +17,11 @@ SCRIPT = Path(reports.__file__)
 def coverage(path, packages):
     root = ET.Element("coverage")
     elements = ET.SubElement(root, "packages")
-    for name, filename, lines in packages:
+    for name, filename, lines, *types in packages:
         package = ET.SubElement(elements, "package", name=name)
-        cls = ET.SubElement(ET.SubElement(package, "classes"), "class", name="Example", filename=filename)
+        cls = ET.SubElement(
+            ET.SubElement(package, "classes"), "class", name=types[0] if types else "Example", filename=filename
+        )
         nodes = ET.SubElement(cls, "lines")
         for line in lines:
             ET.SubElement(nodes, "line", {key: str(value) for key, value in line.items()})
@@ -204,6 +206,26 @@ def test_incompatible_branch_denominators_are_rejected(tmp_path):
     paths = [coverage(tmp_path / f"{i}.xml", [("Library", "Value.cs", [line(branches=(1, i + 2))])]) for i in range(2)]
     with pytest.raises(ValueError, match="same source"):
         reports.coverage_report(paths, tmp_path / "output")
+
+
+@pytest.mark.parametrize("generated_total", [2, 4])
+def test_generated_types_keep_distinct_branches_on_a_shared_source_line(tmp_path, generated_total):
+    paths = [
+        coverage(
+            tmp_path / f"{i}.xml",
+            [
+                ("Library", "Value.cs", [line(hits=i, branches=(i * 2, 2))], "Value"),
+                ("Library", "Value.cs", [line(branches=(1, generated_total))], "Value.<>c"),
+            ],
+        )
+        for i in range(2)
+    ]
+    markdown = reports.coverage_report(paths, tmp_path / "output")
+    root = ET.parse(tmp_path / "output/Cobertura.xml").getroot()
+    assert (root.get("lines-covered"), root.get("lines-valid")) == ("1", "1")
+    assert (root.get("branches-covered"), root.get("branches-valid")) == ("3", str(2 + generated_total))
+    assert "lower bound" in markdown
+    assert root.find(".//line").get("condition-coverage").endswith(f"(3/{2 + generated_total})")
 
 
 def test_junit_handles_nested_suites_failures_setup_errors_skips_and_durations(tmp_path):
