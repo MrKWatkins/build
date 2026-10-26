@@ -124,6 +124,8 @@ def test_coverage_summary_and_isolated_output(workspace, monkeypatch, runner):
 
 @pytest.mark.parametrize("setting", [None, "true", "false"])
 def test_trx_reporting_defaults_on_and_can_be_disabled_without_coverage(workspace, monkeypatch, runner, setting):
+    monkeypatch.setenv("TUNIT_DISABLE_GITHUB_REPORTER", "false")
+    monkeypatch.setenv("TUNIT_DISABLE_HTML_REPORTER", "false")
     if setting is None:
         monkeypatch.delenv("TEST_REPORT")
     else:
@@ -131,6 +133,9 @@ def test_trx_reporting_defaults_on_and_can_be_disabled_without_coverage(workspac
     monkeypatch.setenv("TEST_RESULTS_DIRECTORY", "custom test results")
     build.build()
     test = runner.commands("dotnet", "test")[0]
+    environment = next(kwargs["env"] for args, kwargs in runner.calls if args[:2] == ("dotnet", "test"))
+    assert environment["TUNIT_DISABLE_GITHUB_REPORTER"] == environment["TUNIT_DISABLE_HTML_REPORTER"] == "true"
+    assert environment["VERSION"] == "1.2.3"
     assert ("--report-trx" in test) == (setting != "false")
     assert "--coverage" not in test
     reports = runner.commands(build.sys.executable, str(build.ROOT / "scripts/reports.py"))

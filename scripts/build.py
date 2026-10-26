@@ -119,7 +119,14 @@ def build():
             test_args += ["--report-trx"]
         if coverage or test_report:
             test_args += ["--results-directory", str(temporary / "results")]
-        test = run("dotnet", "test", *test_args, cwd=directory, check=False)
+        test = run(
+            "dotnet",
+            "test",
+            *test_args,
+            cwd=directory,
+            check=False,
+            env={**os.environ, "TUNIT_DISABLE_GITHUB_REPORTER": "true", "TUNIT_DISABLE_HTML_REPORTER": "true"},
+        )
         try:
             report_args = []
             destination = Path(os.environ.get("TEST_RESULTS_DIRECTORY", "artifacts/test-results")).resolve()

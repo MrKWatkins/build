@@ -127,6 +127,7 @@ succeed. Source changes should always run this workflow, including after docs va
 Coverage is on by default. The standard-library Python reporter merges MTP Cobertura files into `artifacts/coverage/Cobertura.xml`, writes
 `SummaryGithub.md`, and appends it to the job summary. There is no reporting tool to install and no coverage percentage gate.
 Set `coverage: 'false'` to skip collection and coverage reporting. Test reporting is independent and enabled by default; set `test-report: 'false'` to disable it.
+Shared builds disable TUnit's additional GitHub and HTML reporters, leaving TRX export and the shared summaries in place.
 
 Test libraries matching `*Tests`, `*Tests.*`, `*TestAssembly` or `*TestAssembly.*` are excluded automatically. Source files under `test`/`tests`
 directories and Python `test_*.py`/`*_test.py` files are also excluded. Additional filters use semicolon-separated `+include`/`-exclude` globs;
