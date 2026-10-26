@@ -1,0 +1,19 @@
+name: Merge tested Dependabot updates
+description: Merge verified minor and patch updates after a successful pull request build, using its exact head SHA.
+inputs:
+  dispatch-build:
+    description: Dispatch the tested workflow on the default branch after merging; it must allow workflow_dispatch.
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v7
+    - name: Merge eligible updates
+      shell: python
+      env:
+        DEPENDABOT_MERGE_SCRIPT: ${{ github.action_path }}/merge.py
+        GITHUB_TOKEN: ${{ github.token }}
+        DEPENDABOT_DISPATCH_BUILD: ${{ inputs.dispatch-build }}
+      run: |
+        import os, subprocess
+        subprocess.run(["uv", "run", "--no-project", "--with", "pyyaml==6.0.3", "python", os.environ["DEPENDABOT_MERGE_SCRIPT"]], check=True)

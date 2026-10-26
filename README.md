@@ -310,3 +310,9 @@ workflows. Registry maintenance can be performed directly in GHCR. Both GHCR pac
 Image tags are independent of library versions. Update pinned tools here and merge to `main`; consumers following `latest` need no configuration change.
 
 Original project code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE).
+
+## Dependabot
+
+`dependabot/merge` runs from a `workflow_run` workflow after a successful pull request build. It merges only same-repository Dependabot PRs targeting the default branch, with verified bot commits whose metadata contains only minor or patch updates. The merge uses the tested head SHA and preserves GitHub's branch protection and review requirements. Major, unknown, failed, superseded and untested updates remain open. The action never checks out or executes pull request code.
+
+See `.github/workflows/dependabot-merge.yml` for a caller. Set `dispatch-build: true` only when the build workflow supports `workflow_dispatch` and needs a default-branch run after merging; grant that caller `actions: write`. This repo uses it to publish tested documentation images, because merges using `GITHUB_TOKEN` do not trigger push workflows.

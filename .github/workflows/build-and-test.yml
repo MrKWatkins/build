@@ -35,10 +35,10 @@ jobs:
           IMAGE_VERSION: sha-${{ github.sha }}
         run: uv run --frozen python scripts/build.py build-images
       - name: Save tested images
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: docker save --output "$RUNNER_TEMP/documentation-images.tar" docs-base:local docs-dotnet:local
       - uses: actions/upload-artifact@v7
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         with:
           name: documentation-images
           path: ${{ runner.temp }}/documentation-images.tar
@@ -47,7 +47,7 @@ jobs:
           retention-days: 1
   publish:
     name: Publish
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: build-and-test
     permissions:
       contents: read

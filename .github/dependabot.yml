@@ -1,6 +1,89 @@
 version: 2
 updates:
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
+- package-ecosystem: github-actions
+  directories:
+  - /
+  - /docs/*
+  - /dotnet/*
+  - /release/*
+  - /dependabot/*
+  schedule:
+    interval: weekly
+  groups:
+    minor-and-patch:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+    major:
+      patterns:
+      - '*'
+      update-types:
+      - major
+    security:
+      applies-to: security-updates
+      patterns:
+      - '*'
+- package-ecosystem: uv
+  directory: /
+  schedule:
+    interval: weekly
+  groups:
+    minor-and-patch:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+    major:
+      patterns:
+      - '*'
+      update-types:
+      - major
+    security:
+      applies-to: security-updates
+      patterns:
+      - '*'
+- package-ecosystem: npm
+  directory: /docs/tooling
+  schedule:
+    interval: weekly
+  groups:
+    minor-and-patch:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+    major:
+      patterns:
+      - '*'
+      update-types:
+      - major
+    security:
+      applies-to: security-updates
+      patterns:
+      - '*'
+- package-ecosystem: docker
+  directories:
+  - /images/docs-base
+  - /images/docs-dotnet
+  schedule:
+    interval: weekly
+  groups:
+    minor-and-patch:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+    major:
+      patterns:
+      - '*'
+      update-types:
+      - major
+    security:
+      applies-to: security-updates
+      patterns:
+      - '*'
