@@ -248,3 +248,24 @@ def test_empty_publication_stops_before_network(workspace, monkeypatch, runner, 
     with pytest.raises(ValueError):
         build.publish()
     assert not runner.calls
+
+
+def test_preparation_tools_cannot_append_to_the_shared_github_summary(workspace, monkeypatch):
+    summary_file = workspace / "summary.md"
+    summary_file.write_text("Existing report.\n")
+    script = workspace / "prepare.py"
+    script.write_text(
+        "import os\nfrom pathlib import Path\n"
+        "if output := os.environ.get('GITHUB_STEP_SUMMARY'):\n"
+        "    with open(output, 'a') as file: file.write('Third-party summary.\\n')\n"
+        "Path('child-environment').write_text(os.environ['GITHUB_ACTIONS'] + ':' + os.environ['VERSION'])\n"
+    )
+    monkeypatch.setenv("PREPARE_SCRIPT", "prepare.py")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
+    build.prepare()
+    assert summary_file.read_text() == "Existing report.\n"
+    assert (workspace / "child-environment").read_text() == "true:1.2.3"
+    assert build.os.environ["GITHUB_STEP_SUMMARY"] == str(summary_file)
+    build.summary("Shared report.")
+    assert summary_file.read_text() == "Existing report.\nShared report.\n"

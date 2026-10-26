@@ -83,7 +83,10 @@ def prepare():
             and script.suffix == ".py",
             "PREPARE_SCRIPT must be a repository-relative Python file.",
         )
-        run(sys.executable, script, cwd=root)
+        # Shared reporting owns the job summary; asset tools such as Vitest should
+        # retain CI annotations without appending their own summaries.
+        environment = {key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"}
+        run(sys.executable, script, cwd=root, env=environment)
 
 
 def build():

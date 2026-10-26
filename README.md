@@ -25,7 +25,7 @@ Test projects need the MTP runner and, when coverage is enabled, the
 `Microsoft.Testing.Extensions.TrxReport`. Set `test-report: 'false'` to disable them. The optional `test-filter` input uses NUnit/MSTest filter expressions.
 
 For repositories with additional build prerequisites, set `prepare: scripts/prepare.py` on `dotnet/project`.
-The optional repository-relative Python script runs with Node 24 available, after SDK setup and before restore/build, including docs-only releases. It can install workloads,
+The optional repository-relative Python script runs with Node 24 available, after SDK setup and before restore/build, including docs-only releases. Preparation subprocesses do not receive `GITHUB_STEP_SUMMARY`, keeping third-party tools such as Vitest from adding duplicate summaries; the shared reporter retains access. It can install workloads,
 test a web app and prepare static documentation assets. It runs once per job and inherits `VERSION` when a release version is selected.
 
 ## Project workflows
