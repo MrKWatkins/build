@@ -191,18 +191,34 @@ def test_find_pull_request_when_run_association_is_empty(scenario):
     assert github.writes[0][1]["sha"] == "tested"
 
 
-@pytest.mark.parametrize("setting,method", [("allow_merge_commit", "merge"), ("allow_rebase_merge", "rebase")])
-def test_respect_repository_merge_method(scenario, setting, method):
+@pytest.mark.parametrize(
+    "settings,method",
+    [
+        ({"allow_rebase_merge": True}, "rebase"),
+        ({"allow_squash_merge": True}, "squash"),
+        ({"allow_rebase_merge": True, "allow_squash_merge": True, "allow_merge_commit": True}, "squash"),
+        ({"allow_rebase_merge": True, "allow_squash_merge": False, "allow_merge_commit": True}, "rebase"),
+    ],
+)
+def test_respect_repository_merge_method(scenario, settings, method):
     event, github = scenario
-    github.values[""] = {setting: True}
+    github.values[""] = settings
     merge.merge_updates(event, github)
     assert github.writes[0][1]["merge_method"] == method
 
 
-def test_reject_repository_without_permitted_merge_method(scenario):
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {},
+        {"allow_merge_commit": True},
+        {"allow_rebase_merge": False, "allow_squash_merge": False, "allow_merge_commit": True},
+    ],
+)
+def test_reject_repository_without_permitted_linear_merge_method(scenario, settings):
     event, github = scenario
-    github.values[""] = {}
-    with pytest.raises(RuntimeError, match="No permitted merge method"):
+    github.values[""] = settings
+    with pytest.raises(RuntimeError, match="No permitted linear merge method"):
         merge.merge_updates(event, github)
     assert github.writes == []
 

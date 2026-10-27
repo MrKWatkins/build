@@ -128,10 +128,10 @@ def merge_updates(event, github, dispatch_build=False):
             print(f"PR #{number} contains a major, unknown, or unverified update; leaving it for review.")
             continue
         settings = github.request("")
-        methods = {"squash": "allow_squash_merge", "merge": "allow_merge_commit", "rebase": "allow_rebase_merge"}
+        methods = {"squash": "allow_squash_merge", "rebase": "allow_rebase_merge"}
         method = next((method for method, setting in methods.items() if settings.get(setting)), None)
         if method is None:
-            raise RuntimeError("No permitted merge method; refusing to merge.")
+            raise RuntimeError("No permitted linear merge method; refusing to merge.")
         result = github.request(f"/pulls/{number}/merge", {"sha": run["head_sha"], "merge_method": method})
         if not result.get("merged"):
             raise RuntimeError(f"GitHub did not merge PR #{number}: {result.get('message')}")
