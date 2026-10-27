@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 ARG BASE_IMAGE=docs-base:local
 FROM mcr.microsoft.com/dotnet/sdk:10.0.403-noble AS tool
-ARG SESHARP_VERSION=1.17.0
+ARG SESHARP_VERSION=1.18.0
 RUN dotnet tool install MrKWatkins.Sesharp.Tool --version "$SESHARP_VERSION" --tool-path /opt/sesharp \
     && mkdir -p /tool \
     && cp -a /opt/sesharp/.store/mrkwatkins.sesharp.tool/"$SESHARP_VERSION"/mrkwatkins.sesharp.tool/"$SESHARP_VERSION"/tools/net10.0/any/. /tool/ \
@@ -13,7 +13,7 @@ RUN dotnet tool install MrKWatkins.Sesharp.Tool --version "$SESHARP_VERSION" --t
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0.14-noble AS runtime
 FROM ${BASE_IMAGE}
-ARG SESHARP_VERSION=1.17.0
+ARG SESHARP_VERSION=1.18.0
 RUN apt-get update && apt-get install -y --no-install-recommends libicu72 libssl3 libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/*
 ENV DOTNET_ROOT=/usr/share/dotnet \

@@ -138,8 +138,8 @@ def test_base_image_builds_static_python_api_with_the_shared_theme(tmp_path):
     check_navigation(manifest["items"])
 
 
-@pytest.mark.parametrize("invalid_manifest", [False, True])
-def test_base_image_builds_prebuilt_api_or_rejects_invalid_navigation(tmp_path, invalid_manifest):
+@pytest.mark.parametrize("invalid", ["", "navigation", "prose"])
+def test_base_image_builds_prebuilt_api_or_rejects_invalid_input(tmp_path, invalid):
     workspace = tmp_path / "prebuilt source with spaces"
     shutil.copytree(FIXTURES / "docs-base", workspace)
     generated = workspace / "docs/API"
@@ -148,8 +148,10 @@ def test_base_image_builds_prebuilt_api_or_rejects_invalid_navigation(tmp_path, 
         "index.md": "# API\n\n[Example](Example/index.md)\n",
         "Example/index.md": "# Example Namespace\n\n[Value](Value/index.md)\n",
         "Example/Value/index.md": "# Value Type\n\n## Methods\n\n[Read](Read.md)\n",
-        "Example/Value/Read.md": "# Value.Read Method\n\nReturns a byte.\n\n```oak\nreturn 1;\n```\n",
+        "Example/Value/Read.md": "# Value.Serialize Method\n\nReturns a byte.\n\n```oak\nreturn 1;\n```\n",
     }
+    if invalid == "prose":
+        pages["Example/Value/Read.md"] += "\nWe serialize data.\n"
     for name, content in pages.items():
         target = generated / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -159,7 +161,7 @@ def test_base_image_builds_prebuilt_api_or_rejects_invalid_navigation(tmp_path, 
         {"id": "T:Value", "path": "Example/Value/index.md", "title": "Value", "kind": "type", "parent": "N:Example"},
         {"id": "M:Read", "path": "Example/Value/Read.md", "title": "Read", "kind": "member", "parent": "T:Value"},
     ]
-    if invalid_manifest:
+    if invalid == "navigation":
         entries[-1]["parent"] = "missing"
     (generated / "navigation.json").write_text(json.dumps({"schemaVersion": 1, "entries": entries}))
     config = workspace / "docs/site.json"
@@ -172,9 +174,12 @@ def test_base_image_builds_prebuilt_api_or_rejects_invalid_navigation(tmp_path, 
     config.write_text(json.dumps(settings))
     image = os.environ.get("DOCS_BASE_TEST_IMAGE", "docs-base:local")
     result = build_site(workspace, image, check=False)
-    if invalid_manifest:
+    if invalid:
         assert result.returncode != 0
-        assert "Missing or cyclic API parent for M:Read" in result.stdout
+        diagnostic = {"navigation": "Missing or cyclic API parent for M:Read", "prose": "Shared.BritishSpelling"}[
+            invalid
+        ]
+        assert diagnostic in result.stdout
         assert not (workspace / "artifacts/docs/index.html").exists()
     else:
         assert result.returncode == 0, result.stdout
