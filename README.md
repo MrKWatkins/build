@@ -364,6 +364,36 @@ Image tags are independent of library versions. Update pinned tools here and mer
 
 Original project code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE).
 
+## Repository settings
+
+Repositories using this build infrastructure follow these GitHub conventions.
+
+| Pull request setting | Value |
+| --- | --- |
+| Allow squash merging | Enabled |
+| Allow merge commits | Disabled |
+| Allow rebase merging | Disabled |
+| Automatically delete head branches | Enabled |
+| Allow auto-merge | Enabled |
+
+- Squash merging produces one commit per pull request.
+- Auto-merge must be enabled for individual pull requests.
+- The Dependabot action handles eligible dependency updates after their build passes.
+
+Use two active branch rulesets targeting `main`.
+
+| Ruleset | Rules | Bypass |
+| --- | --- | --- |
+| Main | Require linear history, require signed commits, restrict deletions | None |
+| Main force pushes | Block force pushes | Only the repository owner, MrKWatkins, with Always allow |
+
+- Keep the force-push exception separate so it cannot bypass signing, linear history or deletion protection.
+- Sign local commits with a key GitHub can verify.
+- Dependabot signs its commits. GitHub signs the resulting squash commit. Dependabot needs no signing exemption.
+
+- Configure these settings in GitHub when adding a repository. The shared actions do not manage them.
+- Keep protection for frozen branches separate from the `main` rulesets.
+
 ## Dependabot
 
 `dependabot/merge` runs from a `workflow_run` workflow after a successful pull request build. It merges only same-repository Dependabot PRs targeting the default branch, with verified bot commits whose metadata contains only minor or patch updates. The merge uses the tested head SHA and preserves GitHub's branch protection and review requirements. It prefers squash merging, falls back to rebase merging when squash is disabled, and refuses to create merge commits. Major, unknown, failed, superseded and untested updates remain open. The action never checks out or executes pull request code. After a successful merge it deletes the tested Dependabot branch, unless GitHub has already deleted it or its head has changed.
