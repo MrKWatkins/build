@@ -368,6 +368,10 @@ Original project code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE)
 
 Repositories using this build infrastructure follow these GitHub conventions.
 
+- Use `GPL-3.0-only` for project code and package metadata.
+- Assertions remains MIT to honour its published commitment to keep that licence.
+- Previously published MIT versions retain their original licence.
+
 | Repository feature | Value |
 | --- | --- |
 | Projects | Disabled |
