@@ -373,6 +373,17 @@ Repositories using this build infrastructure follow these GitHub conventions.
 | Projects | Disabled |
 | Wikis | Disabled |
 
+| Security setting | Value |
+| --- | --- |
+| Dependency graph and Dependabot alerts | Enabled |
+| Dependabot security updates | Enabled |
+| Secret scanning | Enabled where GitHub supports it |
+| Secret scanning push protection | Enabled where GitHub supports it |
+
+- GitHub provides secret scanning and push protection for public repositories. Availability for private repositories depends on ownership and the GitHub plan.
+- Dependabot security updates open pull requests for known vulnerable dependencies. They are separate from the scheduled version updates in `dependabot.yml`.
+- Keep version tags for actions from trusted publishers such as GitHub, Microsoft, Astral and Docker. This accepts mutable publisher-managed tags to avoid separate SHA updates for minor and patch releases.
+
 | Pull request setting | Value |
 | --- | --- |
 | Allow squash merging | Enabled |
