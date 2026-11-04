@@ -368,6 +368,11 @@ Original project code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE)
 
 Repositories using this build infrastructure follow these GitHub conventions.
 
+| Repository feature | Value |
+| --- | --- |
+| Projects | Disabled |
+| Wikis | Disabled |
+
 | Pull request setting | Value |
 | --- | --- |
 | Allow squash merging | Enabled |
