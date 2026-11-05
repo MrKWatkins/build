@@ -75,7 +75,7 @@ runs:
         coverage-source: ${{ inputs.coverage-source }}
         coverage-package-filters: ${{ inputs.coverage-package-filters }}
         coverage-file-filters: ${{ inputs.coverage-file-filters }}
-    - uses: astral-sh/setup-uv@v10.3.2
+    - uses: astral-sh/setup-uv@v10.3.3
       if: inputs.publish-docs == 'true' && inputs.publish-packages != 'true'
       with:
         python-version: ${{ inputs.python-version }}
