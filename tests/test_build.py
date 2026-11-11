@@ -52,6 +52,21 @@ def test_preparation_runs_before_restore(workspace, monkeypatch, runner):
     assert runner.commands("dotnet", "restore")
 
 
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_restore_duration_is_logged_without_skipping_restore(workspace, monkeypatch, runner, capsys, exit_code):
+    times = iter([10.0, 12.5])
+    monkeypatch.setattr(build.time, "monotonic", lambda: next(times))
+    runner.handler = lambda args, kwargs: (exit_code if args[:2] == ("dotnet", "restore") else 0, "")
+    if exit_code:
+        with pytest.raises(subprocess.CalledProcessError) as failure:
+            build.build()
+        assert failure.value.returncode == exit_code
+    else:
+        build.build()
+    assert runner.commands("dotnet", "restore")
+    assert "NuGet restore took 2.5 seconds." in capsys.readouterr().out
+
+
 def test_preparation_failure_stops_build(workspace, monkeypatch, runner):
     (workspace / "prepare.py").write_text("raise RuntimeError('asset build failed')\n")
     monkeypatch.setenv("PREPARE_SCRIPT", "prepare.py")

@@ -149,6 +149,23 @@ No artifact is created when there are no enabled report files. Python test repor
 
 Other build inputs are `directory` (default `src`), `version` (optional), `test-filter` (optional), and `dotnet-version` (default `10.0.x`).
 
+### NuGet caching
+
+The shared .NET build, build-and-pack and docs-only API build paths use `dotnet/setup` to install the SDK and restore an `actions/cache` package cache.
+Restore still runs normally on every build. No lock files are required, and there are no additional jobs.
+
+The cache contains only global NuGet packages. `NUGET_PACKAGES` defaults to an isolated `nuget-packages` folder in the runner's temporary directory;
+an existing `NUGET_PACKAGES` setting is honoured. Keys include the runner OS, architecture, installed SDK version and a hash of tracked project files, props, targets,
+NuGet configuration, `global.json` and any package lock files. Ignored build artifacts do not affect the key. Docs-only builds hash the released API checkout.
+When dependencies change, the most recent cache for the same OS and architecture seeds restore, which downloads any missing packages.
+
+Successful jobs save a new cache when the key changes; exact hits are reused without another upload. Normal GitHub branch cache access and eviction rules apply.
+This does not change repository storage settings or increase GitHub's default 10 GB cache limit.
+
+To measure the benefit, run the same commit twice on the same branch. The first successful run seeds the cache, and the second should report an exact hit.
+Compare the `Cache NuGet packages` step, the logged `NuGet restore took ...` duration, the post-job cache save and the total job time.
+Cache transfer and compression overhead count towards the comparison; a faster restore alone does not establish a cost saving.
+
 ## Reporting .NET and Python results
 
 `reports` accepts TRX or JUnit test results and Cobertura coverage, with no GitHub API access or write permissions. It replaces separate test-report,

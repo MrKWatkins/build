@@ -45,7 +45,7 @@ def test_publication_modes_build_and_publish_only_selected_artifacts(project, pa
     assert ("Deploy documentation" in names) == (docs == "true")
     # Prepared packages stay in the current job; no artifact download or publishing SDK install.
     assert not any("download-artifact" in action for action in uses)
-    assert sum("setup-dotnet" in action for action in uses) == (docs == "true" and packages == "false")
+    assert sum("dotnet/setup@" in action for action in uses) == (docs == "true" and packages == "false")
     if packages == "true":
         assert (
             names.index("Build and validate documentation")

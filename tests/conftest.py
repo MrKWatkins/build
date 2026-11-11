@@ -28,6 +28,8 @@ def isolated_environment(monkeypatch):
         "GITHUB_OUTPUT",
         "GITHUB_STEP_SUMMARY",
         "BUILD_DIRECTORY",
+        "CACHE_SOURCE_DIRECTORY",
+        "CACHE_SDK_VERSION",
         "PREPARE_SCRIPT",
         "PACKAGE_DIRECTORY",
         "COVERAGE",

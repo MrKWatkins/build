@@ -119,9 +119,10 @@ runs:
         path: artifacts/api-source
     - name: Install API build SDK
       if: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' }}
-      uses: actions/setup-dotnet@v6
+      uses: MrKWatkins/build/dotnet/setup@main
       with:
         dotnet-version: ${{ inputs.dotnet-version }}
+        directory: artifacts/api-source
     - name: Prepare project assets
       if: ${{ inputs.publish-docs == 'true' && inputs.publish-packages != 'true' && inputs.prepare != '' }}
       shell: python

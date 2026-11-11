@@ -1,0 +1,33 @@
+name: Set up .NET and NuGet cache
+description: Install the SDK and cache global NuGet packages without skipping restore.
+inputs:
+  dotnet-version:
+    description: .NET SDK version to install.
+    default: 10.0.x
+  directory:
+    description: Checkout root containing the tracked dependency files.
+    default: .
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v6
+      id: sdk
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+    - name: Resolve NuGet cache
+      id: cache
+      shell: python
+      env:
+        BUILD_SCRIPT: ${{ github.action_path }}/../../scripts/build.py
+        CACHE_SOURCE_DIRECTORY: ${{ inputs.directory }}
+        CACHE_SDK_VERSION: ${{ steps.sdk.outputs.dotnet-version }}
+      run: |
+        import os, runpy, sys
+        sys.argv = [os.environ['BUILD_SCRIPT'], 'nuget-cache']
+        runpy.run_path(sys.argv[0], run_name='__main__')
+    - name: Cache NuGet packages
+      uses: actions/cache@v6
+      with:
+        path: ${{ steps.cache.outputs.directory }}
+        key: ${{ steps.cache.outputs.key }}
+        restore-keys: ${{ steps.cache.outputs.prefix }}

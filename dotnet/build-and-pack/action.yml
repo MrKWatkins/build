@@ -38,7 +38,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-dotnet@v6
+    - uses: MrKWatkins/build/dotnet/setup@main
       with:
         dotnet-version: ${{ inputs.dotnet-version }}
     - name: Build, test and pack

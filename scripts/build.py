@@ -3,6 +3,7 @@
 """Shared build automation. Runtime dependencies: Python's standard library only."""
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 from pathlib import Path
 from urllib.parse import quote
@@ -72,6 +74,26 @@ def boolean(name, default=True):
     return value == "true"
 
 
+def nuget_cache():
+    root = Path(os.environ.get("CACHE_SOURCE_DIRECTORY", ".")).resolve(strict=True)
+    tracked = output("git", "ls-files", "-z", cwd=root).split("\0")
+    digest = hashlib.sha256()
+    digest.update(os.environ["CACHE_SDK_VERSION"].encode() + b"\0")
+    for name in sorted(filter(None, tracked)):
+        file = root / name
+        if file.suffix.lower() in (".csproj", ".fsproj", ".vbproj", ".props", ".targets") or file.name.lower() in (
+            "nuget.config",
+            "global.json",
+            "packages.lock.json",
+        ):
+            digest.update(name.encode() + b"\0" + file.read_bytes() + b"\0")
+    directory = Path(os.environ.get("NUGET_PACKAGES") or Path(os.environ["RUNNER_TEMP"]) / "nuget-packages").resolve()
+    prefix = f"nuget-v1-{os.environ['RUNNER_OS']}-{os.environ['RUNNER_ARCH']}-"
+    emit(directory=directory, prefix=prefix, key=prefix + digest.hexdigest())
+    with open(os.environ["GITHUB_ENV"], "a") as environment:
+        environment.write(f"NUGET_PACKAGES={directory}\n")
+
+
 def prepare():
     if name := os.environ.get("PREPARE_SCRIPT"):
         root = Path.cwd().resolve()
@@ -96,7 +118,11 @@ def build():
     version_args = [f"-p:Version={version()}"] if os.environ.get("VERSION") else []
     prepare()
     run("dotnet", "--version", cwd=directory)
-    run("dotnet", "restore", *version_args, cwd=directory)
+    started = time.monotonic()
+    try:
+        run("dotnet", "restore", *version_args, cwd=directory)
+    finally:
+        print(f"NuGet restore took {time.monotonic() - started:.1f} seconds.", flush=True)
     if run("dotnet", "format", "--no-restore", "--verify-no-changes", cwd=directory, check=False).returncode:
         print("Warning: format verification failed; continuing as configured.", file=sys.stderr)
     run(
@@ -669,6 +695,7 @@ def main():
         "python-freshness": python_freshness,
         "python-publish": python_publish,
         "prepare": prepare,
+        "nuget-cache": nuget_cache,
         "pack": pack,
         "build-and-pack": build_and_pack,
         "publish": publish,
