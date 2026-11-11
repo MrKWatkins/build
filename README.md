@@ -142,6 +142,11 @@ Raw test and coverage files are retained under `artifacts/test-results/raw/<run>
 written to `artifacts/test-results/SummaryGithub.md`. Original test failures take precedence over reporting errors; reporting errors also fail an
 otherwise successful build. A low coverage percentage never fails the build.
 
+The shared .NET build, build-and-pack and Python build actions upload enabled raw results, test attachments and summaries as downloadable GitHub artifacts,
+including after test or reporting failures. Artifacts are retained for 14 days and have unique `build-results-<job>-<id>` names for matrix jobs and
+multiple builds in one job. Disabling coverage excludes its files from the upload; disabling .NET test reporting excludes test results.
+No artifact is created when there are no enabled report files. Python test reporting is always enabled.
+
 Other build inputs are `directory` (default `src`), `version` (optional), `test-filter` (optional), and `dotnet-version` (default `10.0.x`).
 
 ## Reporting .NET and Python results

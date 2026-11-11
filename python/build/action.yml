@@ -47,3 +47,7 @@ runs:
         import os, runpy, sys
         sys.argv = [os.environ['BUILD_SCRIPT'], 'python-build']
         runpy.run_path(sys.argv[0], run_name='__main__')
+    - uses: MrKWatkins/build/reports/upload@main
+      if: success() || failure()
+      with:
+        coverage: ${{ inputs.coverage }}

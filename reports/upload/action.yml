@@ -1,0 +1,45 @@
+name: Upload test and coverage results
+description: Retain enabled raw results and summaries for debugging successful and failed builds.
+inputs:
+  tests:
+    description: Upload test results and attachments.
+    default: 'true'
+  coverage:
+    description: Upload raw coverage and merged reports.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Select report files
+      id: files
+      if: success() || failure()
+      shell: python
+      env:
+        UPLOAD_TESTS: ${{ inputs.tests }}
+        UPLOAD_COVERAGE: ${{ inputs.coverage }}
+      run: |
+        import os, uuid
+        from pathlib import Path
+
+        tests = Path(os.environ.get('TEST_RESULTS_DIRECTORY', 'artifacts/test-results'))
+        coverage = Path(os.environ.get('COVERAGE_DIRECTORY', 'artifacts/coverage'))
+        files = set()
+        for file in tests.rglob('*'):
+            if not file.is_file():
+                continue
+            is_coverage = file.name in ('.coverage', 'coverage.xml') or file.name.endswith('.cobertura.xml')
+            setting = 'UPLOAD_COVERAGE' if is_coverage else 'UPLOAD_TESTS'
+            if os.environ[setting] == 'true':
+                files.add(str(file.resolve()))
+        if os.environ['UPLOAD_COVERAGE'] == 'true':
+            files.update(str(file.resolve()) for file in coverage.rglob('*') if file.is_file())
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            output.write('name=build-results-' + os.environ['GITHUB_JOB'] + '-' + uuid.uuid4().hex[:8] + '\n')
+            output.write('paths<<REPORT_PATHS\n' + '\n'.join(sorted(files)) + '\nREPORT_PATHS\n')
+    - uses: actions/upload-artifact@v7
+      if: (success() || failure()) && steps.files.outputs.paths != ''
+      with:
+        name: ${{ steps.files.outputs.name }}
+        path: ${{ steps.files.outputs.paths }}
+        include-hidden-files: true
+        retention-days: 14

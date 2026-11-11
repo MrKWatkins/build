@@ -59,3 +59,8 @@ runs:
         import os, runpy, sys
         sys.argv = [os.environ["BUILD_SCRIPT"], 'build-and-pack']
         runpy.run_path(sys.argv[0], run_name="__main__")
+    - uses: MrKWatkins/build/reports/upload@main
+      if: ${{ (success() || failure()) && (inputs.test-report == 'true' || inputs.coverage == 'true') }}
+      with:
+        tests: ${{ inputs.test-report }}
+        coverage: ${{ inputs.coverage }}
