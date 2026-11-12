@@ -123,7 +123,9 @@ def build():
         run("dotnet", "restore", *version_args, cwd=directory)
     finally:
         print(f"NuGet restore took {time.monotonic() - started:.1f} seconds.", flush=True)
-    if run("dotnet", "format", "--no-restore", "--verify-no-changes", cwd=directory, check=False).returncode:
+    if run(
+        "dotnet", "format", "whitespace", "--no-restore", "--verify-no-changes", cwd=directory, check=False
+    ).returncode:
         print("Warning: format verification failed; continuing as configured.", file=sys.stderr)
     run(
         "dotnet",

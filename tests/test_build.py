@@ -24,6 +24,9 @@ def test_build_preserves_mtp_filter_and_version(workspace, monkeypatch, runner):
     runner.handler = lambda args, kwargs: (1 if args[:2] == ("dotnet", "format") else 0, "")
     build.build()
     assert runner.commands("dotnet", "restore") == [("dotnet", "restore", "-p:Version=1.2.3")]
+    assert runner.commands("dotnet", "format") == [
+        ("dotnet", "format", "whitespace", "--no-restore", "--verify-no-changes")
+    ]
     assert runner.commands("dotnet", "build") == [
         (
             "dotnet",
