@@ -98,6 +98,24 @@ def test_coverage_merges_overlapping_lines_without_counting_method_duplicates(tm
     assert [(n.get("number"), n.get("hits")) for n in merged.findall(".//line")] == [("1", "3"), ("2", "1"), ("3", "0")]
 
 
+def test_coverage_ignores_mtp_merged_report_and_merges_original_attachments(tmp_path):
+    first = coverage(tmp_path / "first.cobertura.xml", [("Library", "Value.cs", [line(1, branches=(1, 2))])])
+    second = coverage(tmp_path / "second.cobertura.xml", [("Library", "Value.cs", [line(2, branches=(2, 2))])])
+    merged_directory = tmp_path / "merged"
+    merged_directory.mkdir()
+    automatic = coverage(
+        merged_directory / "merged-example.cobertura.xml",
+        [("Library", "Value.cs", [{"number": 1, "hits": 1, "branch": "True"}, line(99)])],
+    )
+    output = tmp_path / "output"
+    markdown = reports.coverage_report([first, second, automatic], output)
+    result = ET.parse(output / "Cobertura.xml").getroot()
+    assert (result.get("lines-covered"), result.get("lines-valid")) == ("2", "2")
+    assert (result.get("branches-covered"), result.get("branches-valid")) == ("3", "4")
+    assert "75.0% (3/4)" in markdown
+    assert [node.get("number") for node in result.findall(".//line")] == ["1", "2"]
+
+
 def test_merged_cobertura_has_the_required_schema_structure(tmp_path):
     source = coverage(tmp_path / "input.xml", [("Library", "Value.cs", [line()])])
     reports.coverage_report([source], tmp_path / "output")

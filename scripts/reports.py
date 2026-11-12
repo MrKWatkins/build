@@ -181,6 +181,10 @@ def coverage_report(paths, output, assembly_filters="+*", file_filters="+*", roo
     packages = {}
     seen = set()
     for path in paths:
+        path = Path(path)
+        # MTP merged reports can lose branch counts; merge the original attachments instead.
+        if path.parent.name == "merged" and path.name.startswith("merged-"):
+            continue
         # TRX exporters can copy coverage attachments into a second nested directory.
         with Path(path).open("rb") as file:
             digest = hashlib.file_digest(file, "sha256").digest()
