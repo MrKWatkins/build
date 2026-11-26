@@ -6,10 +6,10 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "coverage>=7.17.3",
+    "coverage>=7.17.5",
     "griffe2md==1.5.1",
     "pytest",
-    "pyyaml>=6.0.3",
+    "pyyaml>=6.0.4",
     "ruff",
 ]
 
